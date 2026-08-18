@@ -15,6 +15,8 @@ class PlayerPresentation:
     name: str | None = None
     title: str | None = None
     avatar_path: Path | None = None
+    country_code: str | None = None
+    flag_path: Path | None = None
     score_before: float | None = None
     game_number: int | None = None
     standing_label: str | None = None

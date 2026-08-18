@@ -3,7 +3,7 @@ from pathlib import Path
 from chess_replay.media.ffmpeg import FFmpegEncoder
 
 
-def test_writes_concat_manifest_and_invokes_ffmpeg(tmp_path: Path, monkeypatch) -> None:
+def test_decodes_each_segment_before_filtered_av_concat(tmp_path: Path, monkeypatch) -> None:
     commands: list[list[str]] = []
 
     def run(command, **kwargs):
@@ -16,11 +16,12 @@ def test_writes_concat_manifest_and_invokes_ffmpeg(tmp_path: Path, monkeypatch) 
     encoder.concatenate(segments, tmp_path / "final.mp4")
 
     assert commands[0][0] == "ffmpeg"
-    assert "concat" in commands[0]
-    assert commands[0].count(str(tmp_path / "final.concat.txt")) == 2
-    assert "-itsoffset" in commands[0]
-    assert "setpts=PTS-STARTPTS" in commands[0]
-    assert commands[0][commands[0].index("-c:a") + 1] == "copy"
+    assert commands[0].count("-i") == 2
+    filter_graph = commands[0][commands[0].index("-filter_complex") + 1]
+    assert "[0:a:0]asetpts=PTS-STARTPTS[a0]" in filter_graph
+    assert "[1:a:0]asetpts=PTS-STARTPTS[a1]" in filter_graph
+    assert "concat=n=2:v=1:a=1[outv][outa]" in filter_graph
+    assert commands[0][commands[0].index("-c:a") + 1] == "aac"
 
 
 def test_uses_millisecond_timebase_and_upward_fps_rounding(tmp_path, monkeypatch) -> None:

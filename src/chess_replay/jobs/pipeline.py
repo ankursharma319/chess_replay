@@ -12,7 +12,7 @@ from typing import Protocol
 
 from chess_replay.analysis.stockfish import PositionEvaluation
 from chess_replay.chess.pgn import ParsedGame, parse_pgn_file
-from chess_replay.jobs.timeline import TimelineBuilder
+from chess_replay.jobs.timeline import TimelineBuilder, align_timestamps_to_frames
 from chess_replay.media.commentary import CommentaryGenerator
 from chess_replay.media.narration import Narrator, NullNarrator
 from chess_replay.media.sound import SoundtrackBuilder
@@ -117,6 +117,10 @@ class ReplayPipeline:
     ) -> RenderResult:
         presentation = presentation or _default_presentation(game)
         timeline = self.timeline_builder.build(game)
+        move_timestamps = align_timestamps_to_frames(
+            timeline.move_timestamps,
+            self.frame_rate,
+        )
         common = {
             "white": presentation.white,
             "black": presentation.black,
@@ -131,17 +135,34 @@ class ReplayPipeline:
             if self.evaluator is not None
             else {}
         )
-        for frame_number, frame in enumerate(timeline.frames):
-            self.renderer.render(
-                fen=frame.fen,
-                output_path=frame_directory / f"frame-{frame_number:05d}.png",
-                white_clock=frame.white_clock,
-                black_clock=frame.black_clock,
-                move_label=frame.move_label,
-                last_move_uci=frame.last_move_uci,
-                evaluation=evaluations.get(frame.fen),
-                **common,
+        frame_durations: list[float] = []
+        previous_evaluation: PositionEvaluation | None = None
+        previous_fen: str | None = None
+        for frame in timeline.frames:
+            evaluation = evaluations.get(frame.fen)
+            animate = previous_fen is not None and frame.fen != previous_fen
+            animation = _evaluation_animation(
+                frame.duration_seconds,
+                previous_evaluation if animate else None,
+                evaluation,
+                self.frame_rate,
             )
+            for duration, fraction in animation:
+                frame_number = len(frame_durations)
+                self.renderer.render(
+                    fen=frame.fen,
+                    output_path=frame_directory / f"frame-{frame_number:05d}.png",
+                    white_clock=frame.white_clock,
+                    black_clock=frame.black_clock,
+                    move_label=frame.move_label,
+                    last_move_uci=frame.last_move_uci,
+                    evaluation=evaluation,
+                    evaluation_fraction=fraction,
+                    **common,
+                )
+                frame_durations.append(duration)
+            previous_evaluation = evaluation
+            previous_fen = frame.fen
 
         commentary_cues = (
             self.commentary_generator.generate(game, presentation) if include_commentary else ()
@@ -149,7 +170,7 @@ class ReplayPipeline:
         narration_clips = self.narrator.synthesize(
             commentary_cues,
             frame_directory / "narration",
-            cue_timestamps=timeline.move_timestamps,
+            cue_timestamps=move_timestamps,
         )
         narration_end = max(
             (
@@ -158,9 +179,8 @@ class ReplayPipeline:
             ),
             default=0.0,
         )
-        frame_durations = [frame.duration_seconds for frame in timeline.frames]
         duration_seconds = timeline.duration_seconds
-        final_frame = frame_directory / f"frame-{len(timeline.frames) - 1:05d}.png"
+        final_frame = frame_directory / f"frame-{len(frame_durations) - 1:05d}.png"
         while duration_seconds < narration_end:
             duration = min(1.0, narration_end - duration_seconds)
             frame_number = len(frame_durations)
@@ -176,7 +196,7 @@ class ReplayPipeline:
         sound_counts = self.soundtrack_builder.build(
             game.plies,
             soundtrack_path,
-            move_timestamps=timeline.move_timestamps,
+            move_timestamps=move_timestamps,
             total_duration_seconds=duration_seconds,
             narration_clips=narration_clips,
         )
@@ -204,7 +224,7 @@ class ReplayPipeline:
             "seconds_per_position": self.seconds_per_position,
             "clock_tick_seconds": self.timeline_builder.clock_tick_seconds,
             "uses_realtime_clocks": timeline.uses_realtime_clocks,
-            "move_timestamps": dict(timeline.move_timestamps),
+            "move_timestamps": dict(move_timestamps),
             "sound_events": {kind.value: count for kind, count in sound_counts.items()},
             "presentation": _presentation_manifest(presentation),
             "commentary": [cue.text for cue in commentary_cues],
@@ -237,6 +257,32 @@ def _wav_duration(path: Path) -> float:
         return audio.getnframes() / audio.getframerate()
 
 
+def _evaluation_animation(
+    duration_seconds: float,
+    previous: PositionEvaluation | None,
+    current: PositionEvaluation | None,
+    frame_rate: int,
+    animation_seconds: float = 0.4,
+) -> tuple[tuple[float, float | None], ...]:
+    if previous is None or current is None or previous == current:
+        return ((duration_seconds, current.white_fraction if current else None),)
+
+    animation_duration = min(duration_seconds, animation_seconds)
+    step_count = max(1, round(animation_duration * frame_rate))
+    step_duration = animation_duration / step_count
+    start = previous.white_fraction
+    end = current.white_fraction
+    steps: list[tuple[float, float | None]] = []
+    for index in range(step_count):
+        progress = (index + 1) / step_count
+        eased = progress * progress * (3 - 2 * progress)
+        steps.append((step_duration, start + (end - start) * eased))
+    remainder = duration_seconds - animation_duration
+    if remainder > 1e-9:
+        steps.append((remainder, end))
+    return tuple(steps)
+
+
 def _default_presentation(game: ParsedGame) -> ReplayPresentation:
     return ReplayPresentation(
         white=PlayerPresentation(
@@ -258,6 +304,8 @@ def _presentation_manifest(presentation: ReplayPresentation) -> dict[str, object
             "title": value.title,
             "rating": value.rating,
             "avatar_path": str(value.avatar_path) if value.avatar_path else None,
+            "country_code": value.country_code,
+            "flag_path": str(value.flag_path) if value.flag_path else None,
             "score_before": value.score_before,
             "game_number": value.game_number,
             "standing_label": value.standing_label,

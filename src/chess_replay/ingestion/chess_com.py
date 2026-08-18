@@ -33,6 +33,15 @@ class PlayerProfile:
     fide_rating: int | None
     country_url: str | None
 
+    @property
+    def country_code(self) -> str | None:
+        if self.country_url is None:
+            return None
+        code = urlparse(self.country_url).path.rstrip("/").rsplit("/", maxsplit=1)[-1]
+        if len(code) != 2 or not code.isalpha():
+            return None
+        return code.upper()
+
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> PlayerProfile:
         fide = payload.get("fide")
@@ -157,6 +166,35 @@ class ChessComClient:
         content_type = response.headers.get("Content-Type", "")
         if content_type and not content_type.startswith("image/"):
             raise ChessComApiError(f"Avatar for {profile.username} is not an image")
+        directory.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(response.content)
+        return destination
+
+    def download_country_flag(self, profile: PlayerProfile, directory: Path) -> Path | None:
+        code = profile.country_code
+        if code is None:
+            return None
+        destination = directory / f"{code.lower()}.png"
+        if destination.is_file():
+            return destination
+
+        try:
+            with self._lock:
+                response = self._client.get(
+                    f"https://flagcdn.com/w80/{code.lower()}.png",
+                    headers={"Accept": "image/png"},
+                )
+        except httpx.RequestError:
+            return None
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            return None
+        if len(response.content) > 256 * 1024:
+            return None
+        content_type = response.headers.get("Content-Type", "")
+        if content_type and not content_type.startswith("image/"):
+            return None
         directory.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(response.content)
         return destination

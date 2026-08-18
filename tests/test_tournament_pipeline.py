@@ -21,6 +21,9 @@ class FakeClient:
     def get_player(self, username):
         return PlayerProfile(username, f"Real {username}", "GM", None, None, None)
 
+    def download_country_flag(self, profile, directory):
+        return None
+
 
 class FakeReplayPipeline:
     frame_rate = 30
@@ -114,6 +117,7 @@ def test_places_primary_player_at_bottom_when_playing_black(tmp_path) -> None:
     presentation = pipeline._presentation(
         parse_pgn('[White "Opponent"]\n[Black "Player"]\n\n1. e4 *'),
         context,
+        {},
         {},
         {},
         "Player",

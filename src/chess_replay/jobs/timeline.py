@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -84,7 +85,7 @@ class TimelineBuilder:
                 elapsed += duration
 
             timestamp += think_seconds
-            move_timestamps[ply.number] = round(timestamp, 6)
+            move_timestamps[ply.number] = timestamp
             if is_white:
                 white_clock = ply.clock_seconds
             else:
@@ -122,6 +123,21 @@ def parse_time_control(time_control: str) -> tuple[float | None, float]:
     except ValueError:
         return None, 0.0
     return base_seconds, increment_seconds
+
+
+def align_timestamps_to_frames(
+    timestamps: Mapping[int, float],
+    frame_rate: int,
+) -> Mapping[int, float]:
+    """Align events with the first encoded frame that can display them."""
+    if frame_rate <= 0:
+        raise ValueError("frame_rate must be positive")
+    return MappingProxyType(
+        {
+            number: math.ceil(timestamp * frame_rate - 1e-9) / frame_rate
+            for number, timestamp in timestamps.items()
+        }
+    )
 
 
 def _move_label(ply_number: int, san: str) -> str:

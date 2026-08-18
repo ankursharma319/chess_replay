@@ -29,8 +29,10 @@ class Settings(BaseSettings):
     espeak_path: str = "espeak-ng"
     voice_pack_directory: Path | None = None
     stockfish_path: str = "stockfish"
-    evaluation_time_ms: int = Field(default=50, ge=10, le=5_000)
-    stockfish_hash_mb: int = Field(default=128, ge=16, le=2_048)
+    evaluation_time_ms: int = Field(default=200, ge=10, le=5_000)
+    evaluation_depth: int = Field(default=18, ge=1, le=50)
+    stockfish_hash_mb: int = Field(default=256, ge=16, le=2_048)
+    stockfish_threads: int = Field(default=2, ge=1, le=32)
 
     @field_validator("chess_com_user_agent")
     @classmethod

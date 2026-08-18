@@ -47,19 +47,26 @@ class StockfishEvaluator:
         self,
         executable: str = "stockfish",
         *,
-        time_seconds: float = 0.05,
-        hash_mb: int = 128,
+        time_seconds: float = 0.2,
+        depth: int = 18,
+        hash_mb: int = 256,
+        threads: int = 2,
     ) -> None:
         if time_seconds <= 0:
             raise ValueError("Stockfish analysis time must be positive")
         if hash_mb < 16:
             raise ValueError("Stockfish hash must be at least 16 MiB")
+        if depth < 1:
+            raise ValueError("Stockfish depth must be positive")
+        if threads < 1:
+            raise ValueError("Stockfish threads must be positive")
         try:
             self._engine = chess.engine.SimpleEngine.popen_uci(executable)
         except (FileNotFoundError, PermissionError, chess.engine.EngineError) as error:
             raise RuntimeError(f"Stockfish is unavailable at {executable!r}") from error
-        self._engine.configure({"Hash": hash_mb})
+        self._engine.configure({"Hash": hash_mb, "Threads": threads})
         self.time_seconds = time_seconds
+        self.depth = depth
         self._cache: dict[str, PositionEvaluation] = {}
 
     def __enter__(self) -> StockfishEvaluator:
@@ -86,7 +93,7 @@ class StockfishEvaluator:
         else:
             info = self._engine.analyse(
                 board,
-                chess.engine.Limit(time=self.time_seconds),
+                chess.engine.Limit(time=self.time_seconds, depth=self.depth),
             )
             score = info["score"].pov(chess.WHITE)
             result = PositionEvaluation(

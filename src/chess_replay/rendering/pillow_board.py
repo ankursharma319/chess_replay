@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import chess
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from chess_replay.analysis.stockfish import PositionEvaluation
+from chess_replay.rendering.pieces import piece_sprite
 from chess_replay.rendering.presentation import PlayerPresentation
 
 
@@ -32,6 +34,10 @@ class PillowBoardRenderer:
         self.width = width
         self.height = height
         self.theme = theme or BoardTheme()
+        self.scale = min(width / 1920, height / 1080)
+
+    def _scaled(self, value: int) -> int:
+        return max(1, round(value * self.scale))
 
     def render(
         self,
@@ -47,18 +53,22 @@ class PillowBoardRenderer:
         event_label: str = "",
         bottom_color: chess.Color = chess.WHITE,
         evaluation: PositionEvaluation | None = None,
+        evaluation_fraction: float | None = None,
     ) -> None:
         board = chess.Board(fen)
         image = Image.new("RGB", (self.width, self.height), self.theme.background)
         draw = ImageDraw.Draw(image)
 
-        board_size = min(self.height - 120, self.width - 620)
+        board_size = min(
+            self.height - self._scaled(120),
+            self.width - self._scaled(620),
+        )
         board_size -= board_size % 8
         square_size = board_size // 8
-        board_left = 70
+        board_left = self._scaled(70)
         board_top = (self.height - board_size) // 2
-        panel_left = board_left + board_size + 70
-        panel_right = self.width - 70
+        panel_left = board_left + board_size + self._scaled(70)
+        panel_right = self.width - self._scaled(70)
 
         highlighted = _highlighted_squares(last_move_uci)
         for row in range(8):
@@ -77,37 +87,38 @@ class PillowBoardRenderer:
 
                 piece = board.piece_at(square)
                 if piece is not None:
-                    self._draw_piece(draw, piece, x, y, square_size)
+                    self._draw_piece(image, piece, x, y, square_size)
 
         if evaluation is not None:
             self._draw_evaluation_bar(
                 draw,
                 evaluation,
-                left=board_left - 38,
+                left=board_left - self._scaled(38),
                 top=board_top,
                 height=board_size,
                 bottom_color=bottom_color,
+                white_fraction=evaluation_fraction,
             )
 
         draw.rounded_rectangle(
             (panel_left, board_top, panel_right, board_top + board_size),
-            radius=8,
+            radius=self._scaled(8),
             fill=self.theme.panel,
         )
-        title_font = _font(46, bold=True)
-        name_font = _font(38, bold=True)
-        clock_font = _font(64, bold=True)
-        detail_font = _font(28)
+        title_font = _font(self._scaled(46), bold=True)
+        name_font = _font(self._scaled(38), bold=True)
+        clock_font = _font(self._scaled(64), bold=True)
+        detail_font = _font(self._scaled(28))
 
         draw.text(
-            (panel_left + 42, board_top + 42),
+            (panel_left + self._scaled(42), board_top + self._scaled(42)),
             move_label,
             fill=self.theme.text,
             font=title_font,
         )
         if event_label:
             draw.text(
-                (panel_left + 42, board_top + 105),
+                (panel_left + self._scaled(42), board_top + self._scaled(105)),
                 event_label,
                 fill=self.theme.muted_text,
                 font=detail_font,
@@ -119,8 +130,8 @@ class PillowBoardRenderer:
         self._draw_player(
             image,
             draw,
-            left=panel_left + 42,
-            top=board_top + 170,
+            left=panel_left + self._scaled(42),
+            top=board_top + self._scaled(170),
             player=top_player,
             clock=top_clock,
             name_font=name_font,
@@ -130,8 +141,8 @@ class PillowBoardRenderer:
         self._draw_player(
             image,
             draw,
-            left=panel_left + 42,
-            top=board_top + board_size - 300,
+            left=panel_left + self._scaled(42),
+            top=board_top + board_size - self._scaled(300),
             player=bottom_player,
             clock=bottom_clock,
             name_font=name_font,
@@ -151,9 +162,11 @@ class PillowBoardRenderer:
         top: int,
         height: int,
         bottom_color: chess.Color,
+        white_fraction: float | None,
     ) -> None:
-        width = 26
-        white_height = round(height * evaluation.white_fraction)
+        width = self._scaled(26)
+        fraction = evaluation.white_fraction if white_fraction is None else white_fraction
+        white_height = round(height * max(0.0, min(1.0, fraction)))
         draw.rectangle((left, top, left + width, top + height), fill="#202220")
         if bottom_color == chess.WHITE:
             white_top = top + height - white_height
@@ -163,15 +176,15 @@ class PillowBoardRenderer:
         draw.rectangle(
             (left, top, left + width, top + height),
             outline=self.theme.muted_text,
-            width=2,
+            width=self._scaled(2),
         )
-        label_font = _font(18, bold=True)
+        label_font = _font(self._scaled(18), bold=True)
         label = evaluation.label
         box = draw.textbbox((0, 0), label, font=label_font)
         text_width = box[2] - box[0]
         text_height = box[3] - box[1]
-        label_width = max(width, text_width + 10)
-        label_height = text_height + 6
+        label_width = max(width, text_width + self._scaled(10))
+        label_height = text_height + self._scaled(6)
         label_left = left - (label_width - width) // 2
         label_top = top + height // 2 - label_height // 2
         draw.rectangle(
@@ -179,7 +192,10 @@ class PillowBoardRenderer:
             fill=self.theme.panel,
         )
         draw.text(
-            (left + (width - text_width) / 2, label_top + 3 - box[1]),
+            (
+                left + (width - text_width) / 2,
+                label_top + self._scaled(3) - box[1],
+            ),
             label,
             fill=self.theme.text,
             font=label_font,
@@ -187,31 +203,21 @@ class PillowBoardRenderer:
 
     def _draw_piece(
         self,
-        draw: ImageDraw.ImageDraw,
+        image: Image.Image,
         piece: chess.Piece,
         left: int,
         top: int,
         square_size: int,
     ) -> None:
-        label = _piece_symbol(piece)
-        font = _piece_font(max(24, int(square_size * 0.82)))
-        box = draw.textbbox((0, 0), label, font=font, stroke_width=1)
-        text_width = box[2] - box[0]
-        text_height = box[3] - box[1]
-        fill = self.theme.light_piece if piece.color == chess.WHITE else self.theme.dark_piece
-        stroke_fill = (
-            self.theme.dark_piece if piece.color == chess.WHITE else self.theme.light_piece
-        )
-        draw.text(
+        sprite_size = max(24, int(square_size * 0.9))
+        sprite = piece_sprite(piece.symbol(), sprite_size)
+        image.paste(
+            sprite,
             (
-                left + (square_size - text_width) / 2,
-                top + (square_size - text_height) / 2 - box[1],
+                left + (square_size - sprite.width) // 2,
+                top + (square_size - sprite.height) // 2,
             ),
-            label,
-            fill=fill,
-            font=font,
-            stroke_width=max(1, square_size // 55),
-            stroke_fill=stroke_fill,
+            sprite,
         )
 
     def _draw_player(
@@ -227,26 +233,36 @@ class PillowBoardRenderer:
         clock_font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
         detail_font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     ) -> None:
-        avatar_size = 104
+        avatar_size = self._scaled(104)
         self._draw_avatar(image, draw, player, left, top, avatar_size)
-        text_left = left + avatar_size + 26
+        text_left = left + avatar_size + self._scaled(26)
         draw.text((text_left, top), player.display_name, fill=self.theme.text, font=name_font)
         if player.metadata_line:
+            metadata_left = text_left
+            if player.flag_path and player.flag_path.is_file():
+                self._draw_flag(
+                    image,
+                    draw,
+                    player.flag_path,
+                    text_left,
+                    top + self._scaled(58),
+                )
+                metadata_left += self._scaled(54)
             draw.text(
-                (text_left, top + 54),
+                (metadata_left, top + self._scaled(54)),
                 player.metadata_line,
                 fill=self.theme.muted_text,
                 font=detail_font,
             )
         draw.text(
-            (text_left, top + 105),
+            (text_left, top + self._scaled(105)),
             _format_clock(clock),
             fill=self.theme.text,
             font=clock_font,
         )
         if player.tournament_line:
             draw.text(
-                (text_left, top + 184),
+                (text_left, top + self._scaled(184)),
                 player.tournament_line,
                 fill=self.theme.highlight,
                 font=detail_font,
@@ -273,7 +289,7 @@ class PillowBoardRenderer:
             (left, top, left + size, top + size),
             fill=self.theme.background,
             outline=self.theme.muted_text,
-            width=2,
+            width=self._scaled(2),
         )
         initial = player.display_name[:1].upper() or "?"
         font = _font(size // 2, bold=True)
@@ -287,6 +303,27 @@ class PillowBoardRenderer:
             fill=self.theme.text,
             font=font,
         )
+
+    def _draw_flag(
+        self,
+        image: Image.Image,
+        draw: ImageDraw.ImageDraw,
+        path: Path,
+        left: int,
+        top: int,
+    ) -> None:
+        bounds = (self._scaled(42), self._scaled(28))
+        with Image.open(path) as source:
+            flag = ImageOps.contain(source.convert("RGB"), bounds)
+        x = left + (bounds[0] - flag.width) // 2
+        y = top + (bounds[1] - flag.height) // 2
+        draw.rectangle(
+            (left - 1, top - 1, left + bounds[0], top + bounds[1]),
+            fill=self.theme.background,
+            outline=self.theme.muted_text,
+            width=1,
+        )
+        image.paste(flag, (x, y))
 
 
 def _highlighted_squares(last_move_uci: str | None) -> set[chess.Square]:
@@ -308,42 +345,9 @@ def _screen_square(row: int, column: int, bottom_color: chess.Color) -> chess.Sq
 def _format_clock(seconds: float | None) -> str:
     if seconds is None:
         return "--:--"
-    tenths = max(0, round(seconds * 10))
-    minutes, remaining_tenths = divmod(tenths, 600)
-    whole_seconds, decimal = divmod(remaining_tenths, 10)
-    return f"{minutes:02d}:{whole_seconds:02d}.{decimal}"
-
-
-def _piece_symbol(piece: chess.Piece) -> str:
-    symbols = {
-        (chess.WHITE, chess.KING): "♔",
-        (chess.WHITE, chess.QUEEN): "♕",
-        (chess.WHITE, chess.ROOK): "♖",
-        (chess.WHITE, chess.BISHOP): "♗",
-        (chess.WHITE, chess.KNIGHT): "♘",
-        (chess.WHITE, chess.PAWN): "♙",
-        (chess.BLACK, chess.KING): "♚",
-        (chess.BLACK, chess.QUEEN): "♛",
-        (chess.BLACK, chess.ROOK): "♜",
-        (chess.BLACK, chess.BISHOP): "♝",
-        (chess.BLACK, chess.KNIGHT): "♞",
-        (chess.BLACK, chess.PAWN): "♟",
-    }
-    return symbols[(piece.color, piece.piece_type)]
-
-
-def _piece_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    candidates = [
-        Path("C:/Windows/Fonts/seguisym.ttf"),
-        Path("DejaVuSans.ttf"),
-        Path("FreeSerif.ttf"),
-    ]
-    for candidate in candidates:
-        try:
-            return ImageFont.truetype(str(candidate), size=size)
-        except OSError:
-            continue
-    return ImageFont.load_default(size=size)
+    total_seconds = max(0, math.ceil(seconds))
+    minutes, whole_seconds = divmod(total_seconds, 60)
+    return f"{minutes:02d}:{whole_seconds:02d}"
 
 
 def _font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:

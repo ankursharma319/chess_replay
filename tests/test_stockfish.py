@@ -26,7 +26,13 @@ def test_caches_stockfish_evaluation(monkeypatch) -> None:
     engine = FakeEngine()
     monkeypatch.setattr(chess.engine.SimpleEngine, "popen_uci", lambda _: engine)
 
-    evaluator = StockfishEvaluator("stockfish", time_seconds=0.01, hash_mb=32)
+    evaluator = StockfishEvaluator(
+        "stockfish",
+        time_seconds=0.01,
+        depth=12,
+        hash_mb=32,
+        threads=1,
+    )
     first = evaluator.evaluate(chess.STARTING_FEN)
     second = evaluator.evaluate(chess.STARTING_FEN)
     evaluator.close()
@@ -34,7 +40,7 @@ def test_caches_stockfish_evaluation(monkeypatch) -> None:
     assert first == PositionEvaluation(80)
     assert second == first
     assert engine.analyse_calls == 1
-    assert engine.configured == {"Hash": 32}
+    assert engine.configured == {"Hash": 32, "Threads": 1}
     assert engine.closed
 
 

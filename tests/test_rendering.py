@@ -3,9 +3,10 @@ from PIL import Image
 
 from chess_replay.analysis.stockfish import PositionEvaluation
 from chess_replay.chess.pgn import parse_pgn
+from chess_replay.rendering.pieces import piece_sprite
 from chess_replay.rendering.pillow_board import (
     PillowBoardRenderer,
-    _piece_symbol,
+    _format_clock,
     _screen_square,
 )
 from chess_replay.rendering.presentation import PlayerPresentation
@@ -31,9 +32,18 @@ def test_renders_replay_frame(tmp_path) -> None:
         assert image.format == "PNG"
 
 
-def test_uses_standard_chess_piece_glyphs() -> None:
-    assert _piece_symbol(chess.Piece(chess.QUEEN, chess.WHITE)) == "♕"
-    assert _piece_symbol(chess.Piece(chess.KNIGHT, chess.BLACK)) == "♞"
+def test_uses_standard_chess_piece_sprites_and_whole_second_clocks() -> None:
+    sprite = piece_sprite("N", 96)
+
+    assert sprite.size == (96, 96)
+    assert sprite.mode == "RGBA"
+    assert sprite.getchannel("A").getextrema() == (0, 255)
+    assert any(
+        alpha not in {0, 255}
+        for alpha in sprite.getchannel("A").get_flattened_data()
+    )
+    assert _format_clock(59.01) == "01:00"
+    assert _format_clock(59.0) == "00:59"
 
 
 def test_flips_board_for_black_and_renders_evaluation_bar(tmp_path) -> None:

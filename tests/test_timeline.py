@@ -1,7 +1,11 @@
 import pytest
 
 from chess_replay.chess.pgn import parse_pgn
-from chess_replay.jobs.timeline import TimelineBuilder, parse_time_control
+from chess_replay.jobs.timeline import (
+    TimelineBuilder,
+    align_timestamps_to_frames,
+    parse_time_control,
+)
 
 
 def test_builds_realtime_clock_countdown_and_move_timestamps() -> None:
@@ -32,3 +36,10 @@ def test_uses_fractional_final_tick_without_rounding_game_time() -> None:
 def test_parses_increment_time_control() -> None:
     assert parse_time_control("300+2") == (300, 2)
     assert parse_time_control("1/86400") == (None, 0)
+
+
+def test_aligns_cues_to_first_frame_showing_move() -> None:
+    aligned = align_timestamps_to_frames({1: 1.4, 2: 1.401}, 30)
+
+    assert aligned[1] == pytest.approx(1.4)
+    assert aligned[2] == pytest.approx(43 / 30)

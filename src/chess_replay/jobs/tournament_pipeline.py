@@ -113,8 +113,13 @@ class TournamentCompilationPipeline:
     ) -> CompilationResult:
         profiles: dict[str, PlayerProfile] = {player.username.casefold(): player}
         avatars: dict[str, Path | None] = {}
+        flags: dict[str, Path | None] = {}
         target_avatar = self.client.download_avatar(player, self.avatar_directory)
         avatars[player.username.casefold()] = target_avatar
+        flags[player.username.casefold()] = self.client.download_country_flag(
+            player,
+            self.avatar_directory.parent / "flags",
+        )
         segments: list[Path] = []
         game_manifests: list[dict[str, object]] = []
         total_duration = 0.0
@@ -127,6 +132,7 @@ class TournamentCompilationPipeline:
                 entry.context,
                 profiles,
                 avatars,
+                flags,
                 player.username,
             )
             round_number = entry.context.round_number
@@ -215,6 +221,7 @@ class TournamentCompilationPipeline:
         context: TournamentGameContext,
         profiles: dict[str, PlayerProfile],
         avatars: dict[str, Path | None],
+        flags: dict[str, Path | None],
         primary_username: str,
     ) -> ReplayPresentation:
         white = self._player_presentation(
@@ -223,6 +230,7 @@ class TournamentCompilationPipeline:
             context.white,
             profiles,
             avatars,
+            flags,
         )
         black = self._player_presentation(
             game.headers.get("Black", "Black"),
@@ -230,6 +238,7 @@ class TournamentCompilationPipeline:
             context.black,
             profiles,
             avatars,
+            flags,
         )
         return ReplayPresentation(
             white=white,
@@ -251,6 +260,7 @@ class TournamentCompilationPipeline:
         state: PlayerTournamentState,
         profiles: dict[str, PlayerProfile],
         avatars: dict[str, Path | None],
+        flags: dict[str, Path | None],
     ) -> PlayerPresentation:
         key = username.casefold()
         if key not in profiles:
@@ -258,12 +268,19 @@ class TournamentCompilationPipeline:
         profile = profiles[key]
         if key not in avatars:
             avatars[key] = self.client.download_avatar(profile, self.avatar_directory)
+        if key not in flags:
+            flags[key] = self.client.download_country_flag(
+                profile,
+                self.avatar_directory.parent / "flags",
+            )
         return PlayerPresentation(
             username=profile.username,
             rating=rating,
             name=profile.name,
             title=profile.title,
             avatar_path=avatars[key],
+            country_code=profile.country_code,
+            flag_path=flags[key],
             score_before=state.score_before,
             game_number=state.game_number,
             standing_label=state.standing_label,

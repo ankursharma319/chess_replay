@@ -1,4 +1,5 @@
 import wave
+from array import array
 
 from chess_replay.chess.pgn import parse_pgn
 from chess_replay.media.sound import SoundKind, SoundtrackBuilder, sound_kind
@@ -28,3 +29,22 @@ def test_capture_takes_precedence_over_normal_move() -> None:
     game = parse_pgn("1. e4 d5 2. exd5 *")
 
     assert sound_kind(game.plies[-1]) is SoundKind.CAPTURE
+
+
+def test_move_sound_has_an_immediate_attack_at_requested_sample(tmp_path) -> None:
+    game = parse_pgn("1. e4 *")
+    output = tmp_path / "soundtrack.wav"
+    SoundtrackBuilder(sample_rate=8_000).build(
+        game.plies,
+        output,
+        move_timestamps={1: 0.25},
+        total_duration_seconds=1,
+    )
+
+    with wave.open(str(output), "rb") as soundtrack:
+        samples = array("h")
+        samples.frombytes(soundtrack.readframes(soundtrack.getnframes()))
+
+    onset = 2_000
+    assert all(sample == 0 for sample in samples[:onset])
+    assert abs(samples[onset]) > 5_000

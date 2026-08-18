@@ -6,8 +6,6 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
-_AAC_FRAME_SECONDS = 1024 / 44_100
-
 
 class FFmpegError(RuntimeError):
     """Raised when FFmpeg is missing or encoding fails."""
@@ -136,34 +134,36 @@ class FFmpegEncoder:
         if not segments:
             raise ValueError("At least one segment is required")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path = output_path.with_suffix(".concat.txt")
-        lines = [f"file '{_concat_path(path.resolve())}'" for path in segments]
-        manifest_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         command = [
             self.executable,
             "-y",
             "-loglevel",
             "error",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(manifest_path),
-            "-itsoffset",
-            f"{-_AAC_FRAME_SECONDS:.9f}",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(manifest_path),
+        ]
+        for segment in segments:
+            command.extend(["-i", str(segment)])
+        filter_parts: list[str] = []
+        concat_inputs: list[str] = []
+        for index in range(len(segments)):
+            filter_parts.extend(
+                [
+                    f"[{index}:v:0]setpts=PTS-STARTPTS[v{index}]",
+                    f"[{index}:a:0]asetpts=PTS-STARTPTS[a{index}]",
+                ]
+            )
+            concat_inputs.extend([f"[v{index}]", f"[a{index}]"])
+        filter_parts.append(
+            "".join(concat_inputs)
+            + f"concat=n={len(segments)}:v=1:a=1[outv][outa]"
+        )
+        command.extend(
+            [
+            "-filter_complex",
+            ";".join(filter_parts),
             "-map",
-            "0:v:0",
+            "[outv]",
             "-map",
-            "1:a:0",
-            "-vf",
-            "setpts=PTS-STARTPTS",
+            "[outa]",
             "-c:v",
             "libx264",
             "-preset",
@@ -173,15 +173,15 @@ class FFmpegEncoder:
             "-pix_fmt",
             "yuv420p",
             "-c:a",
-            "copy",
+            "aac",
+            "-b:a",
+            "192k",
             "-movflags",
             "+faststart",
             str(output_path),
-        ]
-        try:
-            self._run(command, "video concatenation")
-        finally:
-            manifest_path.unlink(missing_ok=True)
+            ]
+        )
+        self._run(command, "video concatenation")
 
     @staticmethod
     def _run(command: list[str], operation: str) -> None:
@@ -212,6 +212,7 @@ class FFmpegEncoder:
                     f"duration {duration:.9f}",
                 ]
             )
+        # A concat duration takes effect only when the following file starts.
         lines.extend(
             [
                 f"file 'frame-{len(frame_durations) - 1:05d}.png'",
@@ -219,7 +220,3 @@ class FFmpegEncoder:
             ]
         )
         manifest_path.write_text("\n".join(lines) + "\n", encoding="ascii")
-
-
-def _concat_path(path: Path) -> str:
-    return path.as_posix().replace("'", "'\\''")

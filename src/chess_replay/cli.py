@@ -300,7 +300,9 @@ def _create_evaluator(settings: Settings) -> StockfishEvaluator:
     return StockfishEvaluator(
         settings.stockfish_path,
         time_seconds=settings.evaluation_time_ms / 1_000,
+        depth=settings.evaluation_depth,
         hash_mb=settings.stockfish_hash_mb,
+        threads=settings.stockfish_threads,
     )
 
 
@@ -345,6 +347,9 @@ def _pubapi_presentation(
         black_profile = client.get_player(black_username)
         white_avatar = client.download_avatar(white_profile, avatar_directory)
         black_avatar = client.download_avatar(black_profile, avatar_directory)
+        flag_directory = output_path.parent / ".cache" / "flags"
+        white_flag = client.download_country_flag(white_profile, flag_directory)
+        black_flag = client.download_country_flag(black_profile, flag_directory)
         tournament = None
         if tournament_url and game_url:
             slug = tournament_url.rstrip("/").rsplit("/", maxsplit=1)[-1]
@@ -357,6 +362,8 @@ def _pubapi_presentation(
             title=white_profile.title,
             rating=game.headers.get("WhiteElo", ""),
             avatar_path=white_avatar,
+            country_code=white_profile.country_code,
+            flag_path=white_flag,
             score_before=tournament.white.score_before if tournament else None,
             game_number=tournament.white.game_number if tournament else None,
             standing_label=tournament.white.standing_label if tournament else None,
@@ -367,6 +374,8 @@ def _pubapi_presentation(
             title=black_profile.title,
             rating=game.headers.get("BlackElo", ""),
             avatar_path=black_avatar,
+            country_code=black_profile.country_code,
+            flag_path=black_flag,
             score_before=tournament.black.score_before if tournament else None,
             game_number=tournament.black.game_number if tournament else None,
             standing_label=tournament.black.standing_label if tournament else None,

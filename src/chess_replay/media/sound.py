@@ -95,21 +95,23 @@ class SoundtrackBuilder:
         return self._move_cue()
 
     def _move_cue(self) -> array[float]:
-        duration = 0.11
+        duration = 0.09
         return self._samples(
             duration,
-            lambda time: 0.55
-            * math.exp(-34 * time)
-            * (math.sin(2 * math.pi * 720 * time) + 0.35 * math.sin(2 * math.pi * 1180 * time)),
+            lambda time: self._wood_hit(time, resonance_hz=860, brightness=1.0),
         )
 
     def _capture_cue(self) -> array[float]:
-        duration = 0.24
+        duration = 0.18
 
         def signal(time: float) -> float:
-            first = 0.62 * math.exp(-18 * time) * math.sin(2 * math.pi * 190 * time)
-            delayed = max(0.0, time - 0.055)
-            second = 0.42 * math.exp(-28 * delayed) * math.sin(2 * math.pi * 520 * delayed)
+            first = self._wood_hit(time, resonance_hz=330, brightness=0.9)
+            delayed = time - 0.042
+            second = (
+                0.58 * self._wood_hit(delayed, resonance_hz=610, brightness=0.7)
+                if delayed >= 0
+                else 0.0
+            )
             return first + second
 
         return self._samples(duration, signal)
@@ -118,15 +120,28 @@ class SoundtrackBuilder:
         duration = 0.95
 
         def signal(time: float) -> float:
-            attack = min(1.0, time / 0.025)
+            impact = self._wood_hit(time, resonance_hz=470, brightness=0.8)
+            attack = min(1.0, time / 0.012)
             release = math.exp(-2.8 * time)
             chord = sum(
                 math.sin(2 * math.pi * frequency * time)
                 for frequency in (261.63, 329.63, 392.0, 523.25)
             )
-            return 0.22 * attack * release * chord
+            return impact + 0.16 * attack * release * chord
 
         return self._samples(duration, signal)
+
+    def _wood_hit(self, time: float, *, resonance_hz: float, brightness: float) -> float:
+        sample_index = round(time * self.sample_rate)
+        if sample_index == 0:
+            return 1.0
+        noise = _deterministic_noise(sample_index)
+        transient = 0.72 * brightness * math.exp(-520 * time) * noise
+        body = 0.48 * math.exp(-48 * time) * math.cos(2 * math.pi * resonance_hz * time)
+        overtone = 0.18 * math.exp(-75 * time) * math.cos(
+            2 * math.pi * resonance_hz * 1.91 * time
+        )
+        return transient + body + overtone
 
     def _samples(self, duration: float, signal: Callable[[float], float]) -> array[float]:
         sample_count = round(duration * self.sample_rate)
@@ -142,3 +157,8 @@ def sound_kind(ply: ReplayPly) -> SoundKind:
     if ply.is_capture:
         return SoundKind.CAPTURE
     return SoundKind.MOVE
+
+
+def _deterministic_noise(sample_index: int) -> float:
+    value = (sample_index * 1_103_515_245 + 12_345) & 0x7FFFFFFF
+    return (value / 0x3FFFFFFF) - 1.0

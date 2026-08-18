@@ -65,9 +65,13 @@ def test_fetches_profile_and_downloads_optional_avatar(tmp_path) -> None:
     ) as client:
         profile = client.get_player("player")
         avatar = client.download_avatar(profile, tmp_path)
+        flag = client.download_country_flag(profile, tmp_path / "flags")
 
     assert profile.name == "Real Name"
     assert profile.title == "GM"
     assert profile.fide_rating == 2700
+    assert profile.country_code == "US"
     assert avatar == tmp_path / "player.png"
     assert avatar.read_bytes() == b"image"
+    assert flag == tmp_path / "flags" / "us.png"
+    assert flag.read_bytes() == b"image"

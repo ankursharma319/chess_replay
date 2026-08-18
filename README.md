@@ -47,7 +47,6 @@ WSL is useful only if the eventual production target is Linux or the developer p
 | Python | 3.11 or newer | Application runtime and virtual environments |
 | FFmpeg and FFprobe | A build with `libx264` and AAC | H.264/AAC encoding, audio normalization, and media validation |
 | Git | Any maintained version | Source control and deployment workflows |
-| A Unicode chess font | Segoe UI Symbol on Windows or DejaVu Sans on Linux | Shaped chess-piece glyphs |
 | Stockfish | 17 or newer; 18 recommended | Position evaluation and evaluation bar |
 
 ### Optional system software
@@ -259,11 +258,13 @@ Evaluation settings can be placed in `.env`:
 
 ```text
 STOCKFISH_PATH=stockfish
-EVALUATION_TIME_MS=50
-STOCKFISH_HASH_MB=128
+EVALUATION_TIME_MS=200
+EVALUATION_DEPTH=18
+STOCKFISH_HASH_MB=256
+STOCKFISH_THREADS=2
 ```
 
-The score is displayed from White's perspective (`+` favors White, `-` favors Black). The bar itself follows board orientation, so the followed player's side remains at the bottom.
+The default analysis budget is 200 ms per unique position at depth 18. The score is displayed from White's perspective (`+` favors White, `-` favors Black). The bar follows board orientation, eases to each new score over 0.4 seconds, and keeps the followed player's side at the bottom.
 
 ### YouTube Upload
 
@@ -407,7 +408,9 @@ Secrets must be supplied outside source control. Runtime settings can be provide
 | `SECONDS_PER_POSITION` | Replay pacing for each board state | No |
 | `STOCKFISH_PATH` | Stockfish executable or absolute path | For evaluation |
 | `EVALUATION_TIME_MS` | Analysis time per unique position | No |
+| `EVALUATION_DEPTH` | Maximum Stockfish depth per unique position | No |
 | `STOCKFISH_HASH_MB` | Stockfish transposition-table memory | No |
+| `STOCKFISH_THREADS` | Stockfish worker threads | No |
 | `NARRATOR_MODE` | `off`, `auto`, `windows-sapi`, `espeak`, or `dmitri` | No |
 
 YouTube publishing takes an OAuth desktop-client JSON file through `--client-secrets` and stores the resulting refreshable credentials at the `--token` path. Both credential patterns are ignored by Git.
@@ -422,6 +425,8 @@ Game data will be collected through Chess.com's free, read-only Published-Data A
 - Apply bounded concurrency and exponential backoff for transient failures.
 - Preserve source links and attribution in generated video descriptions.
 - Avoid downloading or publishing private or restricted data.
+
+Player portraits are the public avatars returned by Chess.com's PubAPI and are cached locally. The renderer does not scrape profile pages or third-party portrait sites. Country codes also come from PubAPI; flag images are downloaded from [FlagCDN](https://flagcdn.com/), whose files are based on Wikimedia Commons flags. The standard Cburnett-style chess pieces are generated through `python-chess`. Chess.com piece art, sound files, and logos are not copied.
 
 Before operating this service at scale, verify that the collection and publication workflow complies with Chess.com's current terms and YouTube's API Services Terms of Service. Game records may be public, but logos, broadcasts, commentary, music, fonts, and other presentation assets can have separate usage rights.
 
@@ -443,7 +448,8 @@ Current output defaults:
 - 1920x1080 resolution at 30 fps
 - YUV 4:2:0 pixel format for broad playback compatibility
 - Real game duration when every move has a clock annotation
-- One visible clock update per second, with exact fractional move timestamps
+- Whole-second clock display, with fractional timing retained internally
+- Move/capture/mate attacks aligned to the first encoded frame showing each move
 - 1.2-second fallback only for moves whose clock annotation is unavailable
 
 ## Commentary and Voice Rights
