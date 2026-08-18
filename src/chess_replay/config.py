@@ -15,7 +15,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    chess_com_user_agent: str = "chess-replay/0.1 (contact: configure-me)"
+    chess_com_user_agent: str = "chess-replay/0.1 (contact: ankur.sharma.test@gmail.com)"
     output_directory: Path = Path("output")
     database_path: Path = Path("output/chess_replay.db")
     ffmpeg_path: str = "ffmpeg"
