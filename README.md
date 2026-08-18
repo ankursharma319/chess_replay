@@ -3,7 +3,7 @@
 Chess Replay is a service for turning public Chess.com games into polished video replays that are ready to publish on YouTube. It is designed with recurring events such as **Titled Tuesday** in mind: discover a tournament, collect its games, render each game as an animated board, add useful context, and produce upload-ready video and metadata.
 
 > [!IMPORTANT]
-> The first vertical slice is runnable: it parses PGN, enriches player and tournament context through PubAPI, renders a clock-aware board replay with shaped pieces and audio, encodes H.264 video, catalogs games, and supports private-by-default YouTube uploads. Tournament discovery, production scheduling, engine analysis, and thumbnails remain in development.
+> The pipeline is runnable end to end: it discovers player tournaments, enriches profiles and scores through PubAPI, renders real-time evaluated replays and tournament compilations, encodes H.264/AAC video, and supports private-by-default YouTube uploads. Production scheduling and thumbnails remain in development.
 
 ## Goals
 
@@ -97,7 +97,44 @@ Transitive Python dependencies are resolved by pip and should not be installed i
 - YouTube upload requires a Google Cloud project, the YouTube Data API v3, an OAuth desktop-client JSON file, and a channel authorized during the consent flow.
 - Dmitri narration requires a local clip pack supplied by the operator. Voice recordings are not downloaded, included, or licensed by this repository.
 
-## Commands
+## Usage
+
+### Quick Start
+
+1. Copy the environment template and set a real contact address:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+At minimum, replace the placeholder in `CHESS_COM_USER_AGENT`:
+
+```text
+CHESS_COM_USER_AGENT=chess-replay/0.1 (contact: you@example.com)
+```
+
+2. Verify the environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m chess_replay ffmpeg-version
+stockfish --help
+```
+
+3. Render the checked-in sample:
+
+```powershell
+.\.venv\Scripts\python.exe -m chess_replay render-pgn `
+    samples\titled-tuesday-2026-08-11-round-9.pgn `
+    --output output\sample.mp4 `
+    --evaluation
+```
+
+The command writes `output\sample.mp4` and `output\sample.json`. The JSON manifest records source metadata, move timestamps, narrator, evaluation state, orientation, and render duration.
+
+### Single Games
 
 Inspect the checked-in Titled Tuesday game:
 
@@ -228,6 +265,33 @@ STOCKFISH_HASH_MB=128
 
 The score is displayed from White's perspective (`+` favors White, `-` favors Black). The bar itself follows board orientation, so the followed player's side remains at the bottom.
 
+### YouTube Upload
+
+Create a Google Cloud OAuth desktop client, enable YouTube Data API v3, and download its JSON credentials. Upload privately first:
+
+```powershell
+.\.venv\Scripts\python.exe -m chess_replay upload-youtube `
+    output\run.mp4 `
+    --title "Magnus Carlsen - Titled Tuesday" `
+    --description "Source games: Chess.com" `
+    --tag chess `
+    --tag "Titled Tuesday" `
+    --privacy private `
+    --client-secrets client_secret.json `
+    --token youtube_token.json
+```
+
+The first upload opens a browser for OAuth consent. Later uploads reuse `youtube_token.json`. Both credential filename patterns are ignored by Git.
+
+### Output and Troubleshooting
+
+- Generated videos and manifests are written under `output/` and ignored by Git.
+- Use `--keep-frames` for a single game or `--keep-intermediates` for a tournament when diagnosing rendering.
+- If PubAPI rejects a request, verify `CHESS_COM_USER_AGENT` and keep requests serial.
+- If evaluation fails, run `Get-Command stockfish` and set `STOCKFISH_PATH` to the executable.
+- If encoding fails, run `ffmpeg -hide_banner -encoders` and verify `libx264` and AAC are present.
+- Narration defaults to off. `--narrator auto` selects SAPI on Windows and `espeak-ng` on Linux.
+
 Well-known names such as `Magnus Carlsen` and `Hikaru Nakamura` are supported directly. PubAPI does not provide a general real-name search endpoint, so use the Chess.com username (for example, `@magnuscarlsen`) when a display name cannot be resolved.
 
 A player may withdraw or skip rounds. The compilation includes all games actually present in that player's archive and reports the real game count rather than assuming 11 games.
@@ -287,6 +351,8 @@ flowchart LR
 - Original synthesized sounds for moves, captures, and checkmate
 - Real-time pacing reconstructed from PGN clock annotations, including increments
 - Active clock countdown while the board remains unchanged during thinking time
+- Stockfish evaluation bar with cached unique-position analysis
+- Followed-player orientation with that player always at the bottom
 - Selective factual commentary with Windows SAPI, Linux `espeak-ng`, or local clips
 - Full player tournament compilations with between-game result and running-score cards
 - Configurable resolution, frame rate, pacing, and FFmpeg location
@@ -339,6 +405,10 @@ Secrets must be supplied outside source control. Runtime settings can be provide
 | `FRAME_WIDTH` / `FRAME_HEIGHT` | Output dimensions | No |
 | `FRAME_RATE` | Encoded frames per second | No |
 | `SECONDS_PER_POSITION` | Replay pacing for each board state | No |
+| `STOCKFISH_PATH` | Stockfish executable or absolute path | For evaluation |
+| `EVALUATION_TIME_MS` | Analysis time per unique position | No |
+| `STOCKFISH_HASH_MB` | Stockfish transposition-table memory | No |
+| `NARRATOR_MODE` | `off`, `auto`, `windows-sapi`, `espeak`, or `dmitri` | No |
 
 YouTube publishing takes an OAuth desktop-client JSON file through `--client-secrets` and stores the resulting refreshable credentials at the `--token` path. Both credential patterns are ignored by Git.
 
@@ -380,7 +450,7 @@ Current output defaults:
 
 The browser extension associated with Andrew Tang's streams is **dmitlichess**. It contains more than 2,000 recorded clips per commentator and offers voices including GMs Dmitri Komarov, Maurice Ashley, and Yasser Seirawan. Its store listing does not publish a source or audio license that permits republishing those recordings in monetized videos.
 
-This project does not copy dmitlichess code or audio and does not imitate a named living commentator. Instead, it generates original factual lines from observable game events and can speak them with a generic local system voice. Any future branded or recognizable voice must have an explicit commercial license and performer consent.
+This repository does not commit or redistribute dmitlichess audio. Its private importer can create an ignored local Dmitri pack for personal testing, while the default commentary path generates original factual lines and uses a generic local system voice. Any published branded or recognizable voice requires an explicit commercial license and performer consent.
 
 ## Reliability and Safety
 
@@ -399,18 +469,19 @@ This project does not copy dmitlichess code or audio and does not imitate a name
 - [x] Implement PGN import, legal move validation, and clock extraction.
 - [x] Implement the serial Chess.com client with conditional caching.
 - [x] Add idempotent SQLite game cataloging.
-- [ ] Add Titled Tuesday discovery and full-event collection.
+- [x] Add Titled Tuesday discovery and player tournament collection.
 - [x] Build a deterministic board renderer for a single game.
 - [x] Add FFmpeg encoding and render manifests.
 - [x] Add player, rating, clock, and last-move overlays.
 - [x] Add shaped pieces, public profiles, tournament context, and event audio.
 - [x] Add original rule-based commentary and optional generic Windows narration.
-- [ ] Add engine analysis, exact tiebreak standings, and thumbnails.
+- [x] Add cached Stockfish analysis and an evaluation bar.
+- [ ] Add exact tiebreak standings and thumbnails.
 - [x] Implement YouTube OAuth, metadata, and private-by-default resumable uploads.
 - [ ] Verify YouTube upload against a configured Google Cloud project.
 - [ ] Add scheduling, persistence, observability, and deployment manifests.
 
-The first milestone is complete: the checked-in PGN produces a deterministic 1920x1080 H.264 replay. The next milestone is discovering a Titled Tuesday event, collecting all games, and creating publication jobs without duplicates.
+The core rendering milestone is complete: a player/date command produces a complete evaluated tournament compilation. The next milestone is production scheduling, job recovery, exact tiebreak standings, and thumbnails.
 
 ## Contributing
 

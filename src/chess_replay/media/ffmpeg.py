@@ -6,6 +6,8 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+_AAC_FRAME_SECONDS = 1024 / 44_100
+
 
 class FFmpegError(RuntimeError):
     """Raised when FFmpeg is missing or encoding fails."""
@@ -68,14 +70,16 @@ class FFmpegEncoder:
             [
             "-c:v",
             "libx264",
-            "-r",
-            str(frame_rate),
             "-pix_fmt",
             "yuv420p",
             "-movflags",
             "+faststart",
             ]
         )
+        if frame_durations is None:
+            command.extend(["-r", str(frame_rate)])
+        else:
+            command.extend(["-vf", f"fps={frame_rate}:round=up"])
         if audio_path is not None:
             command.extend(["-c:a", "aac", "-b:a", "192k", "-shortest"])
         command.append(str(output_path))
@@ -146,7 +150,29 @@ class FFmpegEncoder:
             "0",
             "-i",
             str(manifest_path),
-            "-c",
+            "-itsoffset",
+            f"{-_AAC_FRAME_SECONDS:.9f}",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(manifest_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-vf",
+            "setpts=PTS-STARTPTS",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
             "copy",
             "-movflags",
             "+faststart",
@@ -175,12 +201,23 @@ class FFmpegEncoder:
     ) -> None:
         if not frame_durations:
             raise FFmpegError("At least one frame duration is required")
-        lines: list[str] = []
+        lines = ["ffconcat version 1.0"]
         for index, duration in enumerate(frame_durations):
             if duration <= 0:
                 raise FFmpegError("Frame durations must be positive")
-            lines.extend([f"file 'frame-{index:05d}.png'", f"duration {duration:.6f}"])
-        lines.append(f"file 'frame-{len(frame_durations) - 1:05d}.png'")
+            lines.extend(
+                [
+                    f"file 'frame-{index:05d}.png'",
+                    "option framerate 1000",
+                    f"duration {duration:.9f}",
+                ]
+            )
+        lines.extend(
+            [
+                f"file 'frame-{len(frame_durations) - 1:05d}.png'",
+                "option framerate 1000",
+            ]
+        )
         manifest_path.write_text("\n".join(lines) + "\n", encoding="ascii")
 
 
