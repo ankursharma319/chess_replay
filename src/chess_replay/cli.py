@@ -5,21 +5,27 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+from chess_replay.analysis.stockfish import StockfishEvaluator
 from chess_replay.chess.pgn import parse_pgn_file
 from chess_replay.config import Settings
 from chess_replay.ingestion.chess_com import ChessComClient
+from chess_replay.ingestion.discovery import discover_tournament, resolve_player
 from chess_replay.ingestion.tournament import TournamentContextLoader
 from chess_replay.jobs.pipeline import ReplayPipeline
 from chess_replay.jobs.timeline import TimelineBuilder
+from chess_replay.jobs.tournament_pipeline import TournamentCompilationPipeline
 from chess_replay.media.commentary import DmitriCommentaryGenerator
 from chess_replay.media.ffmpeg import FFmpegEncoder
 from chess_replay.media.narration import create_narrator
 from chess_replay.publishing.youtube import YouTubePublisher, YouTubeVideo
 from chess_replay.rendering.pillow_board import PillowBoardRenderer
 from chess_replay.rendering.presentation import PlayerPresentation, ReplayPresentation
+from chess_replay.rendering.transition import TransitionRenderer
 from chess_replay.storage.catalog import GameCatalog
 from chess_replay.tools.dmitlichess import import_dmitlichess
 
@@ -53,7 +59,27 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("off", "auto", "windows-sapi", "espeak", "dmitri"),
     )
     render.add_argument("--voice-pack-dir", type=Path)
+    render.add_argument("--evaluation", action="store_true")
     render.set_defaults(handler=_render_pgn)
+
+    tournament = commands.add_parser(
+        "render-tournament",
+        help="Render one player's complete tournament run as a single video",
+    )
+    tournament.add_argument("player", help="Chess.com username or supported real name")
+    tournament.add_argument("date", type=date.fromisoformat, help="Tournament date: YYYY-MM-DD")
+    tournament.add_argument("--tournament", default="Titled Tuesday")
+    tournament.add_argument("--output", type=Path)
+    tournament.add_argument(
+        "--narrator",
+        choices=("off", "auto", "windows-sapi", "espeak", "dmitri"),
+        default="off",
+    )
+    tournament.add_argument("--voice-pack-dir", type=Path)
+    tournament.add_argument("--transition-seconds", type=float, default=4.0)
+    tournament.add_argument("--keep-intermediates", action="store_true")
+    tournament.add_argument("--no-evaluation", action="store_true")
+    tournament.set_defaults(handler=_render_tournament)
 
     ffmpeg = commands.add_parser("ffmpeg-version", help="Verify the configured FFmpeg")
     ffmpeg.set_defaults(handler=_ffmpeg_version)
@@ -149,28 +175,19 @@ def _render_pgn(arguments: argparse.Namespace) -> int:
         espeak_executable=settings.espeak_path,
         voice_pack_directory=arguments.voice_pack_dir or settings.voice_pack_directory,
     )
-    pipeline = ReplayPipeline(
-        PillowBoardRenderer(settings.frame_width, settings.frame_height),
-        FFmpegEncoder(settings.ffmpeg_path),
-        commentary_generator=(
-            DmitriCommentaryGenerator() if narrator_mode == "dmitri" else None
-        ),
-        narrator=narrator,
-        timeline_builder=TimelineBuilder(
-            clock_tick_seconds=settings.clock_tick_seconds,
-            fallback_move_seconds=settings.seconds_per_position,
-            ending_hold_seconds=settings.ending_hold_seconds,
-        ),
-        frame_rate=settings.frame_rate,
-        seconds_per_position=settings.seconds_per_position,
-    )
-    result = pipeline.render_pgn(
-        arguments.pgn,
-        output_path,
-        keep_frames=arguments.keep_frames,
-        presentation=presentation,
-        include_commentary=narrator_mode != "off",
-    )
+    evaluator = _create_evaluator(settings) if arguments.evaluation else None
+    try:
+        pipeline = _replay_pipeline(settings, narrator_mode, narrator, evaluator)
+        result = pipeline.render_pgn(
+            arguments.pgn,
+            output_path,
+            keep_frames=arguments.keep_frames,
+            presentation=presentation,
+            include_commentary=narrator_mode != "off",
+        )
+    finally:
+        if evaluator is not None:
+            evaluator.close()
     _print_json(
         {
             "video": str(result.video_path),
@@ -179,6 +196,59 @@ def _render_pgn(arguments: argparse.Namespace) -> int:
             "duration_seconds": result.duration_seconds,
         }
     )
+    return 0
+
+
+def _render_tournament(arguments: argparse.Namespace) -> int:
+    settings = Settings()
+    narrator = create_narrator(
+        arguments.narrator,
+        ffmpeg_executable=settings.ffmpeg_path,
+        espeak_executable=settings.espeak_path,
+        voice_pack_directory=arguments.voice_pack_dir or settings.voice_pack_directory,
+    )
+    evaluator = None if arguments.no_evaluation else _create_evaluator(settings)
+    try:
+        replay_pipeline = _replay_pipeline(
+            settings,
+            arguments.narrator,
+            narrator,
+            evaluator,
+        )
+        with ChessComClient(settings.require_pubapi_contact()) as client:
+            profile = resolve_player(client, arguments.player)
+            archive = client.get_player_month(
+                profile.username,
+                arguments.date.year,
+                arguments.date.month,
+            )
+            discovered = discover_tournament(archive, arguments.date, arguments.tournament)
+            output_path = arguments.output or settings.output_directory / (
+                f"{profile.username.lower()}-{arguments.date.isoformat()}-tournament.mp4"
+            )
+            compiler = TournamentCompilationPipeline(
+                client,
+                replay_pipeline,
+                TransitionRenderer(settings.frame_width, settings.frame_height),
+                FFmpegEncoder(settings.ffmpeg_path),
+                avatar_directory=output_path.parent / ".cache" / "avatars",
+                transition_seconds=arguments.transition_seconds,
+                progress=lambda message: print(message, file=sys.stderr),
+            )
+            result = compiler.render(
+                profile,
+                discovered,
+                output_path,
+                include_commentary=arguments.narrator != "off",
+                keep_intermediates=arguments.keep_intermediates,
+            )
+    finally:
+        if evaluator is not None:
+            evaluator.close()
+    _print_json(asdict(result) | {
+        "video_path": str(result.video_path),
+        "manifest_path": str(result.manifest_path),
+    })
     return 0
 
 
@@ -224,6 +294,38 @@ def _import_dmitlichess(arguments: argparse.Namespace) -> int:
 
 def _print_json(value: Any) -> None:
     print(json.dumps(value, indent=2, ensure_ascii=True))
+
+
+def _create_evaluator(settings: Settings) -> StockfishEvaluator:
+    return StockfishEvaluator(
+        settings.stockfish_path,
+        time_seconds=settings.evaluation_time_ms / 1_000,
+        hash_mb=settings.stockfish_hash_mb,
+    )
+
+
+def _replay_pipeline(
+    settings: Settings,
+    narrator_mode: str,
+    narrator: Any,
+    evaluator: StockfishEvaluator | None,
+) -> ReplayPipeline:
+    return ReplayPipeline(
+        PillowBoardRenderer(settings.frame_width, settings.frame_height),
+        FFmpegEncoder(settings.ffmpeg_path),
+        commentary_generator=(
+            DmitriCommentaryGenerator() if narrator_mode == "dmitri" else None
+        ),
+        narrator=narrator,
+        timeline_builder=TimelineBuilder(
+            clock_tick_seconds=settings.clock_tick_seconds,
+            fallback_move_seconds=settings.seconds_per_position,
+            ending_hold_seconds=settings.ending_hold_seconds,
+        ),
+        evaluator=evaluator,
+        frame_rate=settings.frame_rate,
+        seconds_per_position=settings.seconds_per_position,
+    )
 
 
 def _pubapi_presentation(

@@ -8,6 +8,7 @@ from pathlib import Path
 import chess
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from chess_replay.analysis.stockfish import PositionEvaluation
 from chess_replay.rendering.presentation import PlayerPresentation
 
 
@@ -44,6 +45,8 @@ class PillowBoardRenderer:
         move_label: str = "Start",
         last_move_uci: str | None = None,
         event_label: str = "",
+        bottom_color: chess.Color = chess.WHITE,
+        evaluation: PositionEvaluation | None = None,
     ) -> None:
         board = chess.Board(fen)
         image = Image.new("RGB", (self.width, self.height), self.theme.background)
@@ -58,23 +61,33 @@ class PillowBoardRenderer:
         panel_right = self.width - 70
 
         highlighted = _highlighted_squares(last_move_uci)
-        for rank in range(8):
-            for file in range(8):
-                square = chess.square(file, 7 - rank)
+        for row in range(8):
+            for column in range(8):
+                square = _screen_square(row, column, bottom_color)
                 color = (
                     self.theme.light_square
-                    if (file + rank) % 2 == 0
+                    if (chess.square_rank(square) + chess.square_file(square)) % 2 == 1
                     else self.theme.dark_square
                 )
                 if square in highlighted:
                     color = self.theme.highlight
-                x = board_left + file * square_size
-                y = board_top + rank * square_size
+                x = board_left + column * square_size
+                y = board_top + row * square_size
                 draw.rectangle((x, y, x + square_size, y + square_size), fill=color)
 
                 piece = board.piece_at(square)
                 if piece is not None:
                     self._draw_piece(draw, piece, x, y, square_size)
+
+        if evaluation is not None:
+            self._draw_evaluation_bar(
+                draw,
+                evaluation,
+                left=board_left - 38,
+                top=board_top,
+                height=board_size,
+                bottom_color=bottom_color,
+            )
 
         draw.rounded_rectangle(
             (panel_left, board_top, panel_right, board_top + board_size),
@@ -99,13 +112,17 @@ class PillowBoardRenderer:
                 fill=self.theme.muted_text,
                 font=detail_font,
             )
+        top_player = white if bottom_color == chess.BLACK else black
+        top_clock = white_clock if bottom_color == chess.BLACK else black_clock
+        bottom_player = black if bottom_color == chess.BLACK else white
+        bottom_clock = black_clock if bottom_color == chess.BLACK else white_clock
         self._draw_player(
             image,
             draw,
             left=panel_left + 42,
             top=board_top + 170,
-            player=black,
-            clock=black_clock,
+            player=top_player,
+            clock=top_clock,
             name_font=name_font,
             clock_font=clock_font,
             detail_font=detail_font,
@@ -115,8 +132,8 @@ class PillowBoardRenderer:
             draw,
             left=panel_left + 42,
             top=board_top + board_size - 300,
-            player=white,
-            clock=white_clock,
+            player=bottom_player,
+            clock=bottom_clock,
             name_font=name_font,
             clock_font=clock_font,
             detail_font=detail_font,
@@ -124,6 +141,49 @@ class PillowBoardRenderer:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         image.save(output_path, format="PNG", optimize=True)
+
+    def _draw_evaluation_bar(
+        self,
+        draw: ImageDraw.ImageDraw,
+        evaluation: PositionEvaluation,
+        *,
+        left: int,
+        top: int,
+        height: int,
+        bottom_color: chess.Color,
+    ) -> None:
+        width = 26
+        white_height = round(height * evaluation.white_fraction)
+        draw.rectangle((left, top, left + width, top + height), fill="#202220")
+        if bottom_color == chess.WHITE:
+            white_top = top + height - white_height
+            draw.rectangle((left, white_top, left + width, top + height), fill="#F2EFE6")
+        else:
+            draw.rectangle((left, top, left + width, top + white_height), fill="#F2EFE6")
+        draw.rectangle(
+            (left, top, left + width, top + height),
+            outline=self.theme.muted_text,
+            width=2,
+        )
+        label_font = _font(18, bold=True)
+        label = evaluation.label
+        box = draw.textbbox((0, 0), label, font=label_font)
+        text_width = box[2] - box[0]
+        text_height = box[3] - box[1]
+        label_width = max(width, text_width + 10)
+        label_height = text_height + 6
+        label_left = left - (label_width - width) // 2
+        label_top = top + height // 2 - label_height // 2
+        draw.rectangle(
+            (label_left, label_top, label_left + label_width, label_top + label_height),
+            fill=self.theme.panel,
+        )
+        draw.text(
+            (left + (width - text_width) / 2, label_top + 3 - box[1]),
+            label,
+            fill=self.theme.text,
+            font=label_font,
+        )
 
     def _draw_piece(
         self,
@@ -237,6 +297,12 @@ def _highlighted_squares(last_move_uci: str | None) -> set[chess.Square]:
     except ValueError:
         return set()
     return {move.from_square, move.to_square}
+
+
+def _screen_square(row: int, column: int, bottom_color: chess.Color) -> chess.Square:
+    if bottom_color == chess.WHITE:
+        return chess.square(column, 7 - row)
+    return chess.square(7 - column, row)
 
 
 def _format_clock(seconds: float | None) -> str:

@@ -1,7 +1,13 @@
+import chess
 from PIL import Image
 
+from chess_replay.analysis.stockfish import PositionEvaluation
 from chess_replay.chess.pgn import parse_pgn
-from chess_replay.rendering.pillow_board import PillowBoardRenderer, _piece_symbol
+from chess_replay.rendering.pillow_board import (
+    PillowBoardRenderer,
+    _piece_symbol,
+    _screen_square,
+)
 from chess_replay.rendering.presentation import PlayerPresentation
 
 
@@ -26,7 +32,24 @@ def test_renders_replay_frame(tmp_path) -> None:
 
 
 def test_uses_standard_chess_piece_glyphs() -> None:
-    import chess
-
     assert _piece_symbol(chess.Piece(chess.QUEEN, chess.WHITE)) == "♕"
     assert _piece_symbol(chess.Piece(chess.KNIGHT, chess.BLACK)) == "♞"
+
+
+def test_flips_board_for_black_and_renders_evaluation_bar(tmp_path) -> None:
+    frame = tmp_path / "black-bottom.png"
+
+    PillowBoardRenderer(960, 540).render(
+        fen=chess.STARTING_FEN,
+        output_path=frame,
+        white=PlayerPresentation(username="White"),
+        black=PlayerPresentation(username="Black"),
+        bottom_color=chess.BLACK,
+        evaluation=PositionEvaluation(125),
+    )
+
+    assert _screen_square(7, 0, chess.WHITE) == chess.A1
+    assert _screen_square(7, 0, chess.BLACK) == chess.H8
+    with Image.open(frame) as image:
+        assert image.size == (960, 540)
+        assert image.getbbox() is not None

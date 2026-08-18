@@ -49,6 +49,19 @@ class TournamentGameContext:
     black: PlayerTournamentState
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerTournamentGame:
+    game_url: str
+    context: TournamentGameContext
+    opponent_username: str
+    player_result: str
+    result_label: str
+    score_after: float
+    wins_after: int
+    draws_after: int
+    losses_after: int
+
+
 class TournamentContextLoader:
     """Find a game and calculate each player's state before that round."""
 
@@ -81,6 +94,70 @@ class TournamentContextLoader:
 
         raise ValueError(f"Game {game_url} was not found in tournament {slug}")
 
+    def load_player(self, slug: str, username: str) -> tuple[PlayerTournamentGame, ...]:
+        """Load one player's games and cumulative state in round order."""
+        tournament = self.source.get_tournament(slug)
+        settings = tournament.get("settings", {})
+        total_rounds = int(settings.get("total_rounds", len(tournament.get("rounds", []))))
+        tournament_name = str(tournament.get("name", slug))
+        player_key = username.casefold()
+        scores: dict[str, float] = {}
+        game_counts: dict[str, int] = {}
+        display_names: dict[str, str] = {}
+        games: list[PlayerTournamentGame] = []
+        wins = draws = losses = 0
+
+        for round_number in range(1, total_rounds + 1):
+            groups = self.source.get_tournament_round_groups(slug, round_number)
+            self._register_players(groups, scores, display_names)
+            target = _find_player_game(groups, player_key)
+            context = None
+            opponent = None
+            result = None
+            if target is not None:
+                white_username = str(target["white"]["username"])
+                black_username = str(target["black"]["username"])
+                context = TournamentGameContext(
+                    tournament_name=tournament_name,
+                    round_number=round_number,
+                    total_rounds=total_rounds,
+                    white=_state(white_username, scores, game_counts),
+                    black=_state(black_username, scores, game_counts),
+                )
+                is_white = white_username.casefold() == player_key
+                participant = target["white" if is_white else "black"]
+                opponent = black_username if is_white else white_username
+                result = str(participant.get("result", ""))
+
+            self._apply_round(groups, scores, game_counts, display_names)
+            if target is None or context is None or opponent is None or result is None:
+                continue
+
+            label = result_label(result)
+            if label == "Won":
+                wins += 1
+            elif label == "Drew":
+                draws += 1
+            else:
+                losses += 1
+            games.append(
+                PlayerTournamentGame(
+                    game_url=str(target["url"]),
+                    context=context,
+                    opponent_username=opponent,
+                    player_result=result,
+                    result_label=label,
+                    score_after=scores.get(player_key, 0.0),
+                    wins_after=wins,
+                    draws_after=draws,
+                    losses_after=losses,
+                )
+            )
+
+        if not games:
+            raise ValueError(f"Player {username} has no games in tournament {slug}")
+        return tuple(games)
+
     @staticmethod
     def _register_players(
         groups: Sequence[Mapping[str, Any]],
@@ -108,7 +185,7 @@ class TournamentContextLoader:
                     username = str(participant["username"])
                     key = username.casefold()
                     scores.setdefault(key, 0.0)
-                    scores[key] += _result_points(str(participant.get("result", "")))
+                    scores[key] += result_points(str(participant.get("result", "")))
                     game_counts[key] = game_counts.get(key, 0) + 1
                     display_names.setdefault(key, username)
 
@@ -124,12 +201,33 @@ def _find_game(
     return None
 
 
-def _result_points(result: str) -> float:
+def _find_player_game(
+    groups: Sequence[Mapping[str, Any]],
+    player_key: str,
+) -> Mapping[str, Any] | None:
+    for group in groups:
+        for game in group.get("games", []):
+            white = str(game["white"]["username"]).casefold()
+            black = str(game["black"]["username"]).casefold()
+            if player_key in {white, black}:
+                return game
+    return None
+
+
+def result_points(result: str) -> float:
     if result == "win":
         return 1.0
     if result in _DRAW_RESULTS:
         return 0.5
     return 0.0
+
+
+def result_label(result: str) -> str:
+    if result == "win":
+        return "Won"
+    if result in _DRAW_RESULTS:
+        return "Drew"
+    return "Lost"
 
 
 def _state(

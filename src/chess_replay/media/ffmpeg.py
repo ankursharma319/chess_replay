@@ -87,6 +87,86 @@ class FFmpegEncoder:
             message = error.stderr.strip() or "unknown FFmpeg error"
             raise FFmpegError(f"FFmpeg failed: {message}") from error
 
+    def encode_still(
+        self,
+        image_path: Path,
+        output_path: Path,
+        *,
+        duration_seconds: float,
+        frame_rate: int,
+    ) -> None:
+        if duration_seconds <= 0:
+            raise ValueError("duration_seconds must be positive")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            self.executable,
+            "-y",
+            "-loglevel",
+            "error",
+            "-loop",
+            "1",
+            "-i",
+            str(image_path),
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=channel_layout=mono:sample_rate=44100",
+            "-t",
+            f"{duration_seconds:.3f}",
+            "-c:v",
+            "libx264",
+            "-r",
+            str(frame_rate),
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            str(output_path),
+        ]
+        self._run(command, "transition encoding")
+
+    def concatenate(self, segments: Sequence[Path], output_path: Path) -> None:
+        if not segments:
+            raise ValueError("At least one segment is required")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path = output_path.with_suffix(".concat.txt")
+        lines = [f"file '{_concat_path(path.resolve())}'" for path in segments]
+        manifest_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        command = [
+            self.executable,
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(manifest_path),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+        try:
+            self._run(command, "video concatenation")
+        finally:
+            manifest_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _run(command: list[str], operation: str) -> None:
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+        except FileNotFoundError as error:
+            raise FFmpegError("FFmpeg is unavailable") from error
+        except subprocess.CalledProcessError as error:
+            message = error.stderr.strip() or "unknown FFmpeg error"
+            raise FFmpegError(f"{operation} failed: {message}") from error
+
     @staticmethod
     def _write_concat_manifest(
         frame_directory: Path,
@@ -102,3 +182,7 @@ class FFmpegEncoder:
             lines.extend([f"file 'frame-{index:05d}.png'", f"duration {duration:.6f}"])
         lines.append(f"file 'frame-{len(frame_durations) - 1:05d}.png'")
         manifest_path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def _concat_path(path: Path) -> str:
+    return path.as_posix().replace("'", "'\\''")

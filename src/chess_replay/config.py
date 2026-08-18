@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     narrator_mode: str = "off"
     espeak_path: str = "espeak-ng"
     voice_pack_directory: Path | None = None
+    stockfish_path: str = "stockfish"
+    evaluation_time_ms: int = Field(default=50, ge=10, le=5_000)
+    stockfish_hash_mb: int = Field(default=128, ge=16, le=2_048)
 
     @field_validator("chess_com_user_agent")
     @classmethod

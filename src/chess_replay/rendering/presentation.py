@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import chess
+
 
 @dataclass(frozen=True, slots=True)
 class PlayerPresentation:
@@ -45,6 +47,7 @@ class ReplayPresentation:
     tournament_name: str | None = None
     round_number: int | None = None
     total_rounds: int | None = None
+    bottom_color: chess.Color = chess.WHITE
 
     @property
     def event_line(self) -> str:

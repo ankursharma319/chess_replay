@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
 
+from chess_replay.analysis.stockfish import PositionEvaluation
 from chess_replay.chess.pgn import ParsedGame, parse_pgn_file
 from chess_replay.jobs.timeline import TimelineBuilder
 from chess_replay.media.commentary import CommentaryGenerator
@@ -40,6 +41,10 @@ class FrameEncoder(Protocol):
     ) -> None: ...
 
 
+class PositionEvaluator(Protocol):
+    def evaluate(self, fen: str) -> PositionEvaluation: ...
+
+
 class ReplayPipeline:
     def __init__(
         self,
@@ -50,6 +55,7 @@ class ReplayPipeline:
         narrator: Narrator | None = None,
         soundtrack_builder: SoundtrackBuilder | None = None,
         timeline_builder: TimelineBuilder | None = None,
+        evaluator: PositionEvaluator | None = None,
         frame_rate: int = 30,
         seconds_per_position: float = 1.2,
         ending_hold_positions: int = 3,
@@ -63,6 +69,7 @@ class ReplayPipeline:
             fallback_move_seconds=seconds_per_position,
             ending_hold_seconds=ending_hold_positions * seconds_per_position,
         )
+        self.evaluator = evaluator
         self.frame_rate = frame_rate
         self.seconds_per_position = seconds_per_position
         self.ending_hold_positions = ending_hold_positions
@@ -114,7 +121,16 @@ class ReplayPipeline:
             "white": presentation.white,
             "black": presentation.black,
             "event_label": presentation.event_line,
+            "bottom_color": presentation.bottom_color,
         }
+        evaluations = (
+            {
+                fen: self.evaluator.evaluate(fen)
+                for fen in dict.fromkeys(frame.fen for frame in timeline.frames)
+            }
+            if self.evaluator is not None
+            else {}
+        )
         for frame_number, frame in enumerate(timeline.frames):
             self.renderer.render(
                 fen=frame.fen,
@@ -123,6 +139,7 @@ class ReplayPipeline:
                 black_clock=frame.black_clock,
                 move_label=frame.move_label,
                 last_move_uci=frame.last_move_uci,
+                evaluation=evaluations.get(frame.fen),
                 **common,
             )
 
@@ -208,6 +225,8 @@ class ReplayPipeline:
                 for clip in narration_clips
             ],
             "narrator": type(self.narrator).__name__,
+            "evaluation_enabled": self.evaluator is not None,
+            "evaluated_positions": len(evaluations),
         }
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         return result
@@ -250,4 +269,5 @@ def _presentation_manifest(presentation: ReplayPresentation) -> dict[str, object
         "tournament_name": presentation.tournament_name,
         "round_number": presentation.round_number,
         "total_rounds": presentation.total_rounds,
+        "bottom_color": "white" if presentation.bottom_color else "black",
     }

@@ -23,11 +23,12 @@ Chess Replay is a service for turning public Chess.com games into polished video
 
 ## Windows Setup
 
-Windows is a supported development environment; WSL is not required. Install Python 3.13 and FFmpeg, then create an isolated virtual environment:
+Windows is a supported development environment; WSL is not required. Install Python 3.13, FFmpeg, and Stockfish, then create an isolated virtual environment:
 
 ```powershell
 winget install --exact --id Python.Python.3.13 --scope user
 winget install --exact --id Gyan.FFmpeg --scope user
+winget install --exact --id Stockfish.Stockfish --scope user
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 Copy-Item .env.example .env
@@ -47,6 +48,7 @@ WSL is useful only if the eventual production target is Linux or the developer p
 | FFmpeg and FFprobe | A build with `libx264` and AAC | H.264/AAC encoding, audio normalization, and media validation |
 | Git | Any maintained version | Source control and deployment workflows |
 | A Unicode chess font | Segoe UI Symbol on Windows or DejaVu Sans on Linux | Shaped chess-piece glyphs |
+| Stockfish | 17 or newer; 18 recommended | Position evaluation and evaluation bar |
 
 ### Optional system software
 
@@ -54,13 +56,12 @@ WSL is useful only if the eventual production target is Linux or the developer p
 | --- | --- | --- |
 | Windows PowerShell 5.1 and .NET `System.Speech` | Windows | Generic offline SAPI narration |
 | `espeak-ng` | Linux/WSL | Generic offline Linux narration |
-| Stockfish | Any | Future engine evaluations; not yet required by the implemented pipeline |
 
 Install Ubuntu/WSL prerequisites:
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip ffmpeg espeak-ng fonts-dejavu-core git
+sudo apt install -y python3 python3-venv python3-pip ffmpeg stockfish espeak-ng fonts-dejavu-core git
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
 ```
@@ -108,6 +109,12 @@ Render it to MP4:
 
 ```powershell
 .\.venv\Scripts\python.exe -m chess_replay render-pgn samples\titled-tuesday-2026-08-11-round-9.pgn --output output\replay.mp4
+```
+
+Add a Stockfish evaluation bar to a single-game render:
+
+```powershell
+.\.venv\Scripts\python.exe -m chess_replay render-pgn samples\titled-tuesday-2026-08-11-round-9.pgn --output output\evaluated-replay.mp4 --evaluation
 ```
 
 Enrich the video with public profile photos, real names, titles, round context, entering scores, score standing, move sounds, and automatic platform narration:
@@ -166,6 +173,65 @@ Fetch and catalog a player's monthly archive:
 .\.venv\Scripts\python.exe -m chess_replay fetch-player-month hikaru 2026 8
 ```
 
+Render one player's complete tournament run as a single video:
+
+```powershell
+.\.venv\Scripts\python.exe -m chess_replay render-tournament `
+    "Magnus Carlsen" `
+    2026-08-18
+```
+
+Tournament compilations include a Stockfish evaluation bar by default. The followed player is always shown at the bottom, so the board and player panels flip whenever that player has Black. The default narrator remains `off`. Select another commentary mode when needed:
+
+```powershell
+# Generic platform voice: SAPI on Windows, espeak-ng on Linux
+.\.venv\Scripts\python.exe -m chess_replay render-tournament `
+    "Magnus Carlsen" 2026-08-18 --narrator auto
+
+# Private local Dmitri clip pack
+.\.venv\Scripts\python.exe -m chess_replay render-tournament `
+    "Magnus Carlsen" 2026-08-18 `
+    --narrator dmitri `
+    --voice-pack-dir voice-packs\dmitri
+```
+
+The command performs the complete workflow:
+
+1. Resolves the player to a canonical Chess.com profile.
+2. Fetches the player's monthly archive once.
+3. Finds the tournament matching the UTC date and `--tournament` name.
+4. Maps games to Swiss rounds and reconstructs score progression.
+5. Fetches opponent names, titles, and avatars with caching.
+6. Renders every game in real time with the selected narrator.
+7. Evaluates each unique position once with a shared Stockfish process and renders the evaluation bar.
+8. Keeps the followed player at the bottom for both colors.
+9. Inserts a result card after every game showing result, points, W-D-L record, round, and next opponent.
+10. Concatenates all segments into one H.264/AAC MP4 and writes one JSON manifest.
+
+Useful options:
+
+```text
+--tournament "Titled Tuesday"   Event-name filter; this is the default
+--output output\run.mp4         Final output path
+--transition-seconds 4          Result-card duration
+--keep-intermediates            Preserve individual games and transition assets
+--no-evaluation                 Disable Stockfish and the evaluation bar
+```
+
+Evaluation settings can be placed in `.env`:
+
+```text
+STOCKFISH_PATH=stockfish
+EVALUATION_TIME_MS=50
+STOCKFISH_HASH_MB=128
+```
+
+The score is displayed from White's perspective (`+` favors White, `-` favors Black). The bar itself follows board orientation, so the followed player's side remains at the bottom.
+
+Well-known names such as `Magnus Carlsen` and `Hikaru Nakamura` are supported directly. PubAPI does not provide a general real-name search endpoint, so use the Chess.com username (for example, `@magnuscarlsen`) when a display name cannot be resolved.
+
+A player may withdraw or skip rounds. The compilation includes all games actually present in that player's archive and reports the real game count rather than assuming 11 games.
+
 Run verification:
 
 ```powershell
@@ -222,6 +288,7 @@ flowchart LR
 - Real-time pacing reconstructed from PGN clock annotations, including increments
 - Active clock countdown while the board remains unchanged during thinking time
 - Selective factual commentary with Windows SAPI, Linux `espeak-ng`, or local clips
+- Full player tournament compilations with between-game result and running-score cards
 - Configurable resolution, frame rate, pacing, and FFmpeg location
 - H.264 MP4 encoding with YUV 4:2:0 output
 - JSON render manifests alongside videos

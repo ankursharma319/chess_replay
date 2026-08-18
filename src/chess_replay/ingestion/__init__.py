@@ -6,7 +6,13 @@ from chess_replay.ingestion.chess_com import (
 	Participant,
 	PlayerProfile,
 )
+from chess_replay.ingestion.discovery import (
+	DiscoveredTournament,
+	discover_tournament,
+	resolve_player,
+)
 from chess_replay.ingestion.tournament import (
+	PlayerTournamentGame,
 	PlayerTournamentState,
 	TournamentContextLoader,
 	TournamentGameContext,
@@ -15,9 +21,13 @@ from chess_replay.ingestion.tournament import (
 __all__ = [
 	"ArchivedGame",
 	"ChessComClient",
+	"DiscoveredTournament",
 	"Participant",
 	"PlayerProfile",
+	"PlayerTournamentGame",
 	"PlayerTournamentState",
 	"TournamentContextLoader",
 	"TournamentGameContext",
+	"discover_tournament",
+	"resolve_player",
 ]

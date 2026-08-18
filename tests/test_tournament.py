@@ -39,6 +39,20 @@ def test_reconstructs_score_game_number_and_score_rank_before_round() -> None:
     assert context.black.standing_label == "T-1"
 
 
+def test_loads_player_run_with_score_and_record_progression() -> None:
+    games = TournamentContextLoader(FakeTournamentSource()).load_player("event", "A")
+
+    assert len(games) == 2
+    assert games[0].context.round_number == 1
+    assert games[0].result_label == "Won"
+    assert games[0].score_after == 1
+    assert (games[0].wins_after, games[0].draws_after, games[0].losses_after) == (1, 0, 0)
+    assert games[1].context.round_number == 2
+    assert games[1].result_label == "Drew"
+    assert games[1].score_after == 1.5
+    assert (games[1].wins_after, games[1].draws_after, games[1].losses_after) == (1, 1, 0)
+
+
 def _game(
     url: str,
     white: str,
