@@ -14,4 +14,6 @@ output/
 *.mp4
 client_secret*.json
 youtube_token.json
+# Third-party voice recordings and downloaded browser extensions are local-only.
 voice-packs/
+*.crx

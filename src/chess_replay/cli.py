@@ -20,6 +20,7 @@ from chess_replay.publishing.youtube import YouTubePublisher, YouTubeVideo
 from chess_replay.rendering.pillow_board import PillowBoardRenderer
 from chess_replay.rendering.presentation import PlayerPresentation, ReplayPresentation
 from chess_replay.storage.catalog import GameCatalog
+from chess_replay.tools.dmitlichess import import_dmitlichess
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +66,18 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("--client-secrets", type=Path, required=True)
     upload.add_argument("--token", type=Path, default=Path("youtube_token.json"))
     upload.set_defaults(handler=_upload_youtube)
+
+    importer = commands.add_parser(
+        "import-dmitlichess",
+        help="Create an ignored private Dmitri clip pack from dmitlichess",
+    )
+    importer_source = importer.add_mutually_exclusive_group(required=True)
+    importer_source.add_argument("--extension-dir", type=Path)
+    importer_source.add_argument("--download", action="store_true")
+    importer.add_argument("--target", type=Path, default=Path("voice-packs/dmitri"))
+    importer.add_argument("--clips-per-category", type=int, default=8)
+    importer.add_argument("--accept-private-use-only", action="store_true", required=True)
+    importer.set_defaults(handler=_import_dmitlichess)
     return parser
 
 
@@ -181,6 +194,25 @@ def _upload_youtube(arguments: argparse.Namespace) -> int:
         ),
     )
     _print_json({"video_id": video_id, "privacy": arguments.privacy})
+    return 0
+
+
+def _import_dmitlichess(arguments: argparse.Namespace) -> int:
+    result = import_dmitlichess(
+        arguments.target,
+        extension_directory=arguments.extension_dir,
+        download=arguments.download,
+        private_use_accepted=arguments.accept_private_use_only,
+        clips_per_category=arguments.clips_per_category,
+    )
+    _print_json(
+        {
+            "target": str(result.target_directory),
+            "extension_version": result.extension_version,
+            "clip_count": result.clip_count,
+            "categories": result.categories,
+        }
+    )
     return 0
 
 

@@ -121,7 +121,24 @@ Enrich the video with public profile photos, real names, titles, round context, 
 Use a local Dmitri clip pack without committing its recordings:
 
 ```powershell
+.\.venv\Scripts\python.exe -m chess_replay import-dmitlichess `
+    --download `
+    --target voice-packs\dmitri `
+    --accept-private-use-only
+
 .\.venv\Scripts\python.exe -m chess_replay render-pgn game.pgn --narrator dmitri --voice-pack-dir voice-packs\dmitri
+```
+
+The importer privately downloads the dmitlichess Chrome extension, safely extracts CRX2/CRX3 packages, selects a bounded Dmitri subset, and writes a local manifest plus provenance. The downloaded extension, extracted recordings, generated pack, and rendered videos are excluded by `.gitignore`. They must not be force-added or redistributed.
+
+To import an extension directory that is already installed or extracted:
+
+```powershell
+.\.venv\Scripts\python.exe -m chess_replay import-dmitlichess `
+    --extension-dir C:\path\to\dmitlichess `
+    --target voice-packs\dmitri `
+    --clips-per-category 8 `
+    --accept-private-use-only
 ```
 
 The voice-pack directory must contain `manifest.json`, whose keys correspond to commentary kinds and whose values are filenames or filename lists:
