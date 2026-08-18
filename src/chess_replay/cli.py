@@ -14,6 +14,7 @@ from chess_replay.ingestion.chess_com import ChessComClient
 from chess_replay.ingestion.tournament import TournamentContextLoader
 from chess_replay.jobs.pipeline import ReplayPipeline
 from chess_replay.jobs.timeline import TimelineBuilder
+from chess_replay.media.commentary import DmitriCommentaryGenerator
 from chess_replay.media.ffmpeg import FFmpegEncoder
 from chess_replay.media.narration import create_narrator
 from chess_replay.publishing.youtube import YouTubePublisher, YouTubeVideo
@@ -76,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     importer_source.add_argument("--download", action="store_true")
     importer.add_argument("--target", type=Path, default=Path("voice-packs/dmitri"))
     importer.add_argument("--clips-per-category", type=int, default=8)
+    importer.add_argument("--semantic-only", action="store_true")
     importer.add_argument("--accept-private-use-only", action="store_true", required=True)
     importer.set_defaults(handler=_import_dmitlichess)
     return parser
@@ -150,6 +152,9 @@ def _render_pgn(arguments: argparse.Namespace) -> int:
     pipeline = ReplayPipeline(
         PillowBoardRenderer(settings.frame_width, settings.frame_height),
         FFmpegEncoder(settings.ffmpeg_path),
+        commentary_generator=(
+            DmitriCommentaryGenerator() if narrator_mode == "dmitri" else None
+        ),
         narrator=narrator,
         timeline_builder=TimelineBuilder(
             clock_tick_seconds=settings.clock_tick_seconds,
@@ -204,6 +209,7 @@ def _import_dmitlichess(arguments: argparse.Namespace) -> int:
         download=arguments.download,
         private_use_accepted=arguments.accept_private_use_only,
         clips_per_category=arguments.clips_per_category,
+        include_move_clips=not arguments.semantic_only,
     )
     _print_json(
         {

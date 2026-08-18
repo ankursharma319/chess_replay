@@ -129,7 +129,9 @@ Use a local Dmitri clip pack without committing its recordings:
 .\.venv\Scripts\python.exe -m chess_replay render-pgn game.pgn --narrator dmitri --voice-pack-dir voice-packs\dmitri
 ```
 
-The importer privately downloads the dmitlichess Chrome extension, safely extracts CRX2/CRX3 packages, selects a bounded Dmitri subset, and writes a local manifest plus provenance. The downloaded extension, extracted recordings, generated pack, and rendered videos are excluded by `.gitignore`. They must not be force-added or redistributed.
+The importer privately downloads the dmitlichess Chrome extension, safely extracts CRX2/CRX3 packages, preserves Dmitri's native move index, and writes a local manifest plus provenance. Dmitri mode uses exact SAN clips when available, the extension's generic capture fallback, and `fill` clips for uncovered moves. This provides one commentary clip per ply plus game-start and result clips.
+
+The full pack currently contains about 2,040 unique Dmitri recordings. To create a much smaller category-only pack without per-move coverage, add `--semantic-only`. The downloaded extension, extracted recordings, generated pack, and rendered videos are excluded by `.gitignore`. They must not be force-added or redistributed.
 
 To import an extension directory that is already installed or extracted:
 

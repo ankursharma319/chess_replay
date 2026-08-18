@@ -22,6 +22,8 @@ def test_imports_bounded_private_dmitri_pack(tmp_path: Path) -> None:
         "check": ["check.ogg"],
         "checkmate": ["mate.ogg"],
         "resign": ["resign.ogg"],
+        "start": ["start.ogg"],
+        "e4": ["e4.ogg"],
     }
     (clips / "meta.json").write_text(json.dumps({"sounds": sounds}), encoding="utf-8")
     for filename in {item for values in sounds.values() for item in values}:
@@ -38,7 +40,9 @@ def test_imports_bounded_private_dmitri_pack(tmp_path: Path) -> None:
     manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
     assert result.extension_version == "1.2.3"
     assert result.categories["capture"] == 1
-    assert manifest["checkmate"] == ["clips/checkmate/mate.ogg"]
+    native_index = json.loads((target / "native-index.json").read_text(encoding="utf-8"))
+    assert manifest["checkmate"] == ["clips/native/mate.ogg"]
+    assert native_index["e4"] == ["clips/native/e4.ogg"]
     assert (target / manifest["castle"][0]).is_file()
     assert json.loads((target / "provenance.json").read_text())["private_use_only"]
 

@@ -1,6 +1,10 @@
 """Media encoding and validation."""
 
-from chess_replay.media.commentary import CommentaryCue, CommentaryGenerator
+from chess_replay.media.commentary import (
+	CommentaryCue,
+	CommentaryGenerator,
+	DmitriCommentaryGenerator,
+)
 from chess_replay.media.ffmpeg import FFmpegEncoder, FFmpegError
 from chess_replay.media.narration import (
 	EspeakNarrator,
@@ -16,6 +20,7 @@ from chess_replay.media.sound import NarrationClip, SoundKind, SoundtrackBuilder
 __all__ = [
 	"CommentaryCue",
 	"CommentaryGenerator",
+	"DmitriCommentaryGenerator",
 	"FFmpegEncoder",
 	"FFmpegError",
 	"EspeakNarrator",

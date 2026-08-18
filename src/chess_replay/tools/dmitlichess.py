@@ -31,6 +31,7 @@ def import_dmitlichess(
     download: bool = False,
     private_use_accepted: bool = False,
     clips_per_category: int = 8,
+    include_move_clips: bool = True,
 ) -> DmitlichessImportResult:
     """Create an ignored local pack without redistributing extension recordings."""
     if not private_use_accepted:
@@ -50,13 +51,19 @@ def import_dmitlichess(
             _extract_crx(crx_path, source)
         if source is None:
             raise AssertionError("source must be resolved")
-        return _build_pack(source, target_directory, clips_per_category)
+        return _build_pack(
+            source,
+            target_directory,
+            clips_per_category,
+            include_move_clips,
+        )
 
 
 def _build_pack(
     extension_directory: Path,
     target_directory: Path,
     limit: int,
+    include_move_clips: bool,
 ) -> DmitlichessImportResult:
     extension_manifest = _json_object(extension_directory / "manifest.json")
     dmitri_directory = extension_directory / "ogg" / "dmitri"
@@ -66,7 +73,7 @@ def _build_pack(
         raise ValueError("Dmitri metadata does not contain a sounds object")
 
     selected: dict[str, tuple[str, ...]] = {
-        "intro": _category(sounds, "fill", limit),
+        "intro": _category(sounds, "start", limit),
         "castle": _combined_categories(sounds, ("O-O", "O-O-O"), limit),
         "capture": _capture_clips(sounds, limit),
         "check": _category(sounds, "check", limit),
@@ -82,21 +89,33 @@ def _build_pack(
     if target_directory.exists():
         shutil.rmtree(target_directory)
     target_directory.mkdir(parents=True)
+    semantic_filenames = {filename for filenames in selected.values() for filename in filenames}
+    all_filenames = (
+        {str(filename) for values in sounds.values() for filename in values}
+        if include_move_clips
+        else semantic_filenames
+    )
+    native_directory = target_directory / "clips" / "native"
+    native_directory.mkdir(parents=True)
+    for filename in sorted(all_filenames):
+        source = dmitri_directory / filename
+        if not source.is_file():
+            raise ValueError(f"Dmitri clip listed in metadata is missing: {source}")
+        shutil.copy2(source, native_directory / source.name)
+
+    native_index = {
+        str(key): [f"clips/native/{filename}" for filename in values if filename in all_filenames]
+        for key, values in sounds.items()
+        if isinstance(values, list)
+    }
+    native_index = {key: values for key, values in native_index.items() if values}
+    (target_directory / "native-index.json").write_text(
+        json.dumps(native_index, indent=2) + "\n",
+        encoding="utf-8",
+    )
     manifest: dict[str, list[str]] = {}
-    copied = 0
     for kind, filenames in selected.items():
-        category_directory = target_directory / "clips" / kind
-        category_directory.mkdir(parents=True)
-        relative_files: list[str] = []
-        for filename in filenames:
-            source = dmitri_directory / filename
-            if not source.is_file():
-                raise ValueError(f"Dmitri clip listed in metadata is missing: {source}")
-            destination = category_directory / source.name
-            shutil.copy2(source, destination)
-            relative_files.append(destination.relative_to(target_directory).as_posix())
-            copied += 1
-        manifest[kind] = relative_files
+        manifest[kind] = [f"clips/native/{filename}" for filename in filenames]
 
     (target_directory / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
@@ -117,7 +136,7 @@ def _build_pack(
     return DmitlichessImportResult(
         target_directory=target_directory,
         extension_version=provenance["extension_version"],
-        clip_count=copied,
+        clip_count=len(all_filenames),
         categories={kind: len(files) for kind, files in manifest.items()},
     )
 

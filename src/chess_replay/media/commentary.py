@@ -13,6 +13,7 @@ class CommentaryCue:
     ply_number: int
     text: str
     kind: str = "commentary"
+    clip_key: str | None = None
 
 
 class CommentaryGenerator:
@@ -73,6 +74,29 @@ class CommentaryGenerator:
         return tuple(cues)
 
 
+class DmitriCommentaryGenerator:
+    """Generate dmitlichess-compatible notation and game-state cues."""
+
+    def generate(
+        self,
+        game: ParsedGame,
+        presentation: ReplayPresentation,
+    ) -> tuple[CommentaryCue, ...]:
+        cues = [CommentaryCue(0, "Game start.", "intro", "start")]
+        for ply in game.plies:
+            notation = ply.san.replace("#", "").replace("+", "").replace("@", "")
+            cues.append(CommentaryCue(ply.number, ply.san, "move", notation))
+            if ply.is_checkmate:
+                cues.append(CommentaryCue(ply.number, "Checkmate.", "checkmate", "checkmate"))
+            elif ply.is_check:
+                cues.append(CommentaryCue(ply.number, "Check.", "check", "check"))
+
+        if game.plies:
+            state = _dmitri_result_key(game)
+            cues.append(CommentaryCue(game.plies[-1].number, "Game over.", "result", state))
+        return tuple(cues)
+
+
 def _spoken_result(result: str) -> str:
     if result == "1-0":
         return "White wins."
@@ -81,3 +105,16 @@ def _spoken_result(result: str) -> str:
     if result == "1/2-1/2":
         return "The game is drawn."
     return "The result is not recorded."
+
+
+def _dmitri_result_key(game: ParsedGame) -> str:
+    termination = game.headers.get("Termination", "").casefold()
+    if game.plies and game.plies[-1].is_checkmate:
+        return "checkmate"
+    if "resign" in termination:
+        return "resign"
+    if "time" in termination:
+        return "flag"
+    if game.result == "1/2-1/2":
+        return "draw"
+    return "resign"

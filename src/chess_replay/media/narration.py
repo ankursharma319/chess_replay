@@ -156,6 +156,15 @@ class LocalClipPackNarrator:
         if not isinstance(payload, dict):
             raise NarrationUnavailable("Voice pack manifest must be a JSON object")
         self.clips = {str(kind): _clip_names(value) for kind, value in payload.items()}
+        native_index_path = directory / "native-index.json"
+        self.native_index = (
+            {
+                str(key): _clip_names(value)
+                for key, value in json.loads(native_index_path.read_text(encoding="utf-8")).items()
+            }
+            if native_index_path.is_file()
+            else {}
+        )
 
     def synthesize(
         self,
@@ -168,7 +177,7 @@ class LocalClipPackNarrator:
         selected_cues: list[CommentaryCue] = []
         paths: list[Path] = []
         for cue in cues:
-            candidates = self.clips.get(cue.kind) or self.clips.get("default") or ()
+            candidates = self._candidates(cue)
             if not candidates:
                 continue
             source = self.directory / candidates[cue.ply_number % len(candidates)]
@@ -179,6 +188,22 @@ class LocalClipPackNarrator:
             selected_cues.append(cue)
             paths.append(output)
         return _schedule(tuple(selected_cues), paths, cue_timestamps)
+
+    def _candidates(self, cue: CommentaryCue) -> tuple[str, ...]:
+        if cue.clip_key:
+            native = self.native_index.get(cue.clip_key)
+            if native:
+                return native
+            if len(cue.clip_key) > 1 and cue.clip_key[1] == "x":
+                generic = self.native_index.get(cue.clip_key[1:])
+                if generic:
+                    return generic
+        return (
+            self.clips.get(cue.kind)
+            or self.native_index.get("fill")
+            or self.clips.get("default")
+            or ()
+        )
 
 
 def create_narrator(

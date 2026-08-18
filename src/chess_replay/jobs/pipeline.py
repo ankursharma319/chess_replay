@@ -191,6 +191,22 @@ class ReplayPipeline:
             "sound_events": {kind.value: count for kind, count in sound_counts.items()},
             "presentation": _presentation_manifest(presentation),
             "commentary": [cue.text for cue in commentary_cues],
+            "commentary_cues": [
+                {
+                    "ply_number": cue.ply_number,
+                    "kind": cue.kind,
+                    "clip_key": cue.clip_key,
+                    "text": cue.text,
+                }
+                for cue in commentary_cues
+            ],
+            "narration_clips": [
+                {
+                    "offset_seconds": clip.offset_seconds,
+                    "file": clip.path.name,
+                }
+                for clip in narration_clips
+            ],
             "narrator": type(self.narrator).__name__,
         }
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
