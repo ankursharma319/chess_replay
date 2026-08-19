@@ -125,6 +125,7 @@ class PillowBoardRenderer:
                 spacing=self._scaled(8),
             )
         top_player = white if bottom_color == chess.BLACK else black
+        top_player_color = not bottom_color
         top_clock = white_clock if bottom_color == chess.BLACK else black_clock
         bottom_player = black if bottom_color == chess.BLACK else white
         bottom_clock = black_clock if bottom_color == chess.BLACK else white_clock
@@ -132,12 +133,14 @@ class PillowBoardRenderer:
             image,
             draw,
             left=panel_left + self._scaled(42),
-            top=board_top + self._scaled(200),
+            top=board_top + self._scaled(250),
             player=top_player,
             clock=top_clock,
             name_font=name_font,
             clock_font=clock_font,
             detail_font=detail_font,
+            board=board,
+            color=top_player_color,
         )
         self._draw_player(
             image,
@@ -149,6 +152,8 @@ class PillowBoardRenderer:
             name_font=name_font,
             clock_font=clock_font,
             detail_font=detail_font,
+            board=board,
+            color=bottom_color,
         )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -233,6 +238,8 @@ class PillowBoardRenderer:
         name_font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
         clock_font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
         detail_font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+        board: chess.Board,
+        color: chess.Color,
     ) -> None:
         avatar_size = self._scaled(104)
         self._draw_avatar(image, draw, player, left, top, avatar_size)
@@ -267,6 +274,42 @@ class PillowBoardRenderer:
                 player.tournament_line,
                 fill=self.theme.highlight,
                 font=detail_font,
+            )
+        self._draw_captured_material(
+            image,
+            draw,
+            board,
+            color,
+            left=text_left,
+            top=top + self._scaled(224),
+        )
+
+    def _draw_captured_material(
+        self,
+        image: Image.Image,
+        draw: ImageDraw.ImageDraw,
+        board: chess.Board,
+        color: chess.Color,
+        *,
+        left: int,
+        top: int,
+    ) -> None:
+        pieces, advantage = _captured_material(board, color)
+        icon_size = self._scaled(32)
+        icon_step = self._scaled(24)
+        x = left
+        for piece in pieces:
+            sprite = piece_sprite(piece.symbol(), icon_size)
+            image.paste(sprite, (x, top), sprite)
+            x += icon_step
+        if advantage > 0:
+            if pieces:
+                x += self._scaled(8)
+            draw.text(
+                (x, top + self._scaled(2)),
+                f"+{advantage}",
+                fill=self.theme.highlight,
+                font=_font(self._scaled(24), bold=True),
             )
 
     def _draw_avatar(
@@ -349,6 +392,57 @@ def _format_clock(seconds: float | None) -> str:
     total_seconds = max(0, math.ceil(seconds))
     minutes, whole_seconds = divmod(total_seconds, 60)
     return f"{minutes:02d}:{whole_seconds:02d}"
+
+
+_MATERIAL_VALUES = {
+    chess.QUEEN: 9,
+    chess.ROOK: 5,
+    chess.BISHOP: 3,
+    chess.KNIGHT: 3,
+    chess.PAWN: 1,
+}
+
+_INITIAL_PIECE_COUNTS = {
+    chess.QUEEN: 1,
+    chess.ROOK: 2,
+    chess.BISHOP: 2,
+    chess.KNIGHT: 2,
+    chess.PAWN: 8,
+}
+
+
+def _captured_material(
+    board: chess.Board,
+    player_color: chess.Color,
+) -> tuple[tuple[chess.Piece, ...], int]:
+    opponent = not player_color
+    promoted_opponent_pieces = chess.popcount(board.promoted & board.occupied_co[opponent])
+    captured: list[chess.Piece] = []
+    for piece_type in (
+        chess.QUEEN,
+        chess.ROOK,
+        chess.BISHOP,
+        chess.KNIGHT,
+        chess.PAWN,
+    ):
+        remaining = chess.popcount(
+            board.pieces_mask(piece_type, opponent) & ~board.promoted
+        )
+        if piece_type == chess.PAWN:
+            remaining += promoted_opponent_pieces
+        missing = max(0, _INITIAL_PIECE_COUNTS[piece_type] - remaining)
+        captured.extend(chess.Piece(piece_type, opponent) for _ in range(missing))
+
+    player_points = _material_points(board, player_color)
+    opponent_points = _material_points(board, opponent)
+    return tuple(captured), max(0, player_points - opponent_points)
+
+
+def _material_points(board: chess.Board, color: chess.Color) -> int:
+    return sum(
+        chess.popcount(board.pieces_mask(piece_type, color)) * value
+        for piece_type, value in _MATERIAL_VALUES.items()
+    )
 
 
 def _font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:

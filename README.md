@@ -371,6 +371,7 @@ flowchart LR
 - Real-time pacing reconstructed from PGN clock annotations, including increments
 - Active clock countdown while the board remains unchanged during thinking time
 - Stockfish evaluation bar with cached unique-position analysis
+- Captured-piece icons and standard point advantage beside each player
 - Followed-player orientation with that player always at the bottom
 - Selective factual commentary with Windows SAPI, Linux `espeak-ng`, or local clips
 - Full player tournament compilations with between-game result and running-score cards

@@ -6,6 +6,7 @@ from chess_replay.chess.pgn import parse_pgn
 from chess_replay.rendering.pieces import piece_sprite
 from chess_replay.rendering.pillow_board import (
     PillowBoardRenderer,
+    _captured_material,
     _format_clock,
     _screen_square,
 )
@@ -63,3 +64,15 @@ def test_flips_board_for_black_and_renders_evaluation_bar(tmp_path) -> None:
     with Image.open(frame) as image:
         assert image.size == (960, 540)
         assert image.getbbox() is not None
+
+
+def test_summarizes_captured_pieces_and_point_advantage() -> None:
+    board = chess.Board("1nbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQk - 0 1")
+
+    white_captures, white_advantage = _captured_material(board, chess.WHITE)
+    black_captures, black_advantage = _captured_material(board, chess.BLACK)
+
+    assert white_captures == (chess.Piece(chess.ROOK, chess.BLACK),)
+    assert white_advantage == 5
+    assert black_captures == ()
+    assert black_advantage == 0
