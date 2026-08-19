@@ -3,7 +3,11 @@ from datetime import UTC, date, datetime
 import httpx
 
 from chess_replay.ingestion.chess_com import ArchivedGame, ChessComClient, Participant
-from chess_replay.ingestion.discovery import discover_tournament, resolve_player
+from chess_replay.ingestion.discovery import (
+    discover_daily_games,
+    discover_tournament,
+    resolve_player,
+)
 
 
 def test_resolves_known_real_name_to_profile() -> None:
@@ -37,7 +41,25 @@ def test_discovers_unique_tournament_by_utc_date_and_name() -> None:
     assert [game.source_id for game in discovered.games] == ["1", "2"]
 
 
-def _game(source_id: str, tournament_url: str, utc_date: str, end_second: int) -> ArchivedGame:
+def test_discovers_non_tournament_daily_games_in_chronological_order() -> None:
+    games = (
+        _game("2", None, "2026.08.17", 20),
+        _game("1", None, "2026.08.17", 10),
+        _game("3", "event-url", "2026.08.17", 30),
+        _game("4", None, "2026.08.18", 40),
+    )
+
+    selected = discover_daily_games(games, date(2026, 8, 17))
+
+    assert [game.source_id for game in selected] == ["1", "2"]
+
+
+def _game(
+    source_id: str,
+    tournament_url: str | None,
+    utc_date: str,
+    end_second: int,
+) -> ArchivedGame:
     participant = Participant("Player", 3000, "win")
     return ArchivedGame(
         source_id=source_id,

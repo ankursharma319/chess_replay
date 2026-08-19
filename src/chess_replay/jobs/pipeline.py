@@ -309,6 +309,7 @@ def _presentation_manifest(presentation: ReplayPresentation) -> dict[str, object
             "score_before": value.score_before,
             "game_number": value.game_number,
             "standing_label": value.standing_label,
+            "daily_record": value.daily_record,
         }
 
     return {

@@ -268,6 +268,21 @@ The default analysis budget is 200 ms per unique position at depth 18. The score
 
 Replay headers place the event on one line and the game class, clock, and round on the next, such as `Blitz 3+1 · Round 4/11`. Result transitions explicitly identify the followed player's outcome, show both players' titles, and include the PubAPI termination reason, including checkmate, resignation, time out, stalemate, agreement, repetition, and insufficient material.
 
+### Daily Non-Tournament Compilation
+
+Render all of a player's non-tournament games from one UTC date:
+
+```powershell
+.\.venv\Scripts\python.exe -m chess_replay render-day `
+    "Magnus Carlsen" `
+    2026-08-17 `
+    --output output\magnuscarlsen-2026-08-17-daily.mp4
+```
+
+Daily compilations use the same real-time clocks, exact move audio, Stockfish evaluation, profiles, flags, orientation, and H.264/AAC encoding as tournament compilations. Game headers show `Game N/total`, and each player panel shows that player's entering non-tournament day record as `Day 6W · 1D · 0L`. Result transitions show the explicit outcome and termination, both player titles, game format, cumulative followed-player W-D-L record, and next opponent.
+
+By default, `render-day` excludes games associated with a tournament. Add `--include-tournament` to include every archived game on that UTC date. Other useful options are `--no-evaluation`, `--narrator`, `--transition-seconds`, and `--keep-intermediates`.
+
 ### YouTube Upload
 
 Create a Google Cloud OAuth desktop client, enable YouTube Data API v3, and download its JSON credentials. Upload privately first:
@@ -359,6 +374,7 @@ flowchart LR
 - Followed-player orientation with that player always at the bottom
 - Selective factual commentary with Windows SAPI, Linux `espeak-ng`, or local clips
 - Full player tournament compilations with between-game result and running-score cards
+- Full daily non-tournament compilations with sequence and running W-D-L cards
 - Configurable resolution, frame rate, pacing, and FFmpeg location
 - H.264 MP4 encoding with YUV 4:2:0 output
 - JSON render manifests alongside videos
@@ -490,7 +506,7 @@ This repository does not commit or redistribute dmitlichess audio. Its private i
 - [ ] Verify YouTube upload against a configured Google Cloud project.
 - [ ] Add scheduling, persistence, observability, and deployment manifests.
 
-The core rendering milestone is complete: a player/date command produces a complete evaluated tournament compilation. The next milestone is production scheduling, job recovery, exact tiebreak standings, and thumbnails.
+The core rendering milestone is complete: player/date commands produce complete evaluated tournament or daily game compilations. The next milestone is production scheduling, job recovery, exact tiebreak standings, and thumbnails.
 
 ## Contributing
 

@@ -89,6 +89,30 @@ def discover_tournament(
     )
 
 
+def discover_daily_games(
+    games: tuple[ArchivedGame, ...],
+    event_date: date,
+    *,
+    non_tournament_only: bool = True,
+) -> tuple[ArchivedGame, ...]:
+    """Select a player's games for one UTC date in chronological order."""
+    selected = tuple(
+        sorted(
+            (
+                game
+                for game in games
+                if _game_date(game) == event_date
+                and (not non_tournament_only or game.tournament_url is None)
+            ),
+            key=lambda game: game.end_time,
+        )
+    )
+    if not selected:
+        qualifier = " non-tournament" if non_tournament_only else ""
+        raise ValueError(f"No{qualifier} games found on {event_date.isoformat()}")
+    return selected
+
+
 def _profile_matches(profile: PlayerProfile, normalized_identifier: str) -> bool:
     return (
         profile.name is not None

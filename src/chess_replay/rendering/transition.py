@@ -27,6 +27,9 @@ class TransitionPresentation:
     total_rounds: int
     tournament_name: str
     next_opponent: str | None = None
+    score_heading: str | None = None
+    progress_label: str | None = None
+    completion_label: str = "Tournament run complete"
 
     @property
     def outcome_heading(self) -> str:
@@ -51,6 +54,10 @@ class TransitionRenderer:
         self.width = width
         self.height = height
         self.theme = theme or BoardTheme()
+        self.scale = min(width / 1920, height / 1080)
+
+    def _scaled(self, value: int) -> int:
+        return max(1, round(value * self.scale))
 
     def render(self, presentation: TransitionPresentation, output_path: Path) -> None:
         image = Image.new("RGB", (self.width, self.height), self.theme.background)
@@ -61,76 +68,82 @@ class TransitionRenderer:
             "Drew": "#B18A35",
         }.get(presentation.result_label, self.theme.highlight)
 
-        draw.rectangle((0, 0, self.width, 18), fill=result_color)
+        draw.rectangle((0, 0, self.width, self._scaled(18)), fill=result_color)
         draw.text(
-            (self.width // 2, 85),
+            (self.width // 2, self._scaled(85)),
             presentation.tournament_name.replace("-", " "),
             fill=self.theme.muted_text,
-            font=_font(34),
+            font=_font(self._scaled(34)),
             anchor="mm",
         )
         draw.text(
-            (self.width // 2, 250),
+            (self.width // 2, self._scaled(250)),
             presentation.outcome_heading,
             fill=result_color,
-            font=_font(92, bold=True),
+            font=_font(self._scaled(92), bold=True),
             anchor="mm",
         )
         draw.text(
-            (self.width // 2, 390),
+            (self.width // 2, self._scaled(390)),
             presentation.matchup_line,
             fill=self.theme.text,
-            font=_font(48, bold=True),
+            font=_font(self._scaled(48), bold=True),
             anchor="mm",
         )
         draw.text(
-            (self.width // 2, 455),
+            (self.width // 2, self._scaled(455)),
             f"{presentation.termination_label}  ·  {presentation.game_format}",
             fill=self.theme.muted_text,
-            font=_font(32, bold=True),
+            font=_font(self._scaled(32), bold=True),
             anchor="mm",
         )
 
-        card_top = 500
+        card_top = self._scaled(500)
         draw.rounded_rectangle(
-            (320, card_top, self.width - 320, card_top + 300),
-            radius=8,
+            (
+                self._scaled(320),
+                card_top,
+                self.width - self._scaled(320),
+                card_top + self._scaled(300),
+            ),
+            radius=self._scaled(8),
             fill=self.theme.panel,
         )
         draw.text(
-            (self.width // 2, card_top + 80),
-            _plural(presentation.score_after, "point"),
+            (self.width // 2, card_top + self._scaled(80)),
+            presentation.score_heading or _plural(presentation.score_after, "point"),
             fill=self.theme.text,
-            font=_font(72, bold=True),
+            font=_font(self._scaled(72), bold=True),
             anchor="mm",
         )
         draw.text(
-            (self.width // 2, card_top + 175),
+            (self.width // 2, card_top + self._scaled(175)),
             f"{_plural(presentation.wins, 'win')}  ·  "
             f"{_plural(presentation.draws, 'draw')}  ·  "
             f"{_plural(presentation.losses, 'loss', 'losses')}",
             fill=self.theme.highlight,
-            font=_font(38, bold=True),
+            font=_font(self._scaled(38), bold=True),
             anchor="mm",
         )
         draw.text(
-            (self.width // 2, card_top + 245),
-            f"Round {presentation.round_number} of {presentation.total_rounds}",
+            (self.width // 2, card_top + self._scaled(245)),
+            presentation.progress_label
+            or f"Round {presentation.round_number} of {presentation.total_rounds}",
             fill=self.theme.muted_text,
-            font=_font(30),
+            font=_font(self._scaled(30)),
             anchor="mm",
         )
 
         footer = (
             f"Next: {presentation.next_opponent}"
             if presentation.next_opponent
-            else "Tournament run complete"
+            else presentation.completion_label
         )
         draw.text(
-            (self.width // 2, 930),
+            (self.width // 2, self._scaled(930)),
             footer,
             fill=self.theme.text,
-            font=_font(36),
+            font=_font(self._scaled(36)),
             anchor="mm",
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)

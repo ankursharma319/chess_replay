@@ -20,6 +20,7 @@ class PlayerPresentation:
     score_before: float | None = None
     game_number: int | None = None
     standing_label: str | None = None
+    daily_record: tuple[int, int, int] | None = None
 
     @property
     def display_name(self) -> str:
@@ -37,6 +38,9 @@ class PlayerPresentation:
             parts.append(f"{self.score_before:g} pts")
         if self.game_number is not None:
             parts.append(f"Game {self.game_number}")
+        if self.daily_record is not None:
+            wins, draws, losses = self.daily_record
+            parts.append(f"Day {wins}W · {draws}D · {losses}L")
         if self.standing_label is not None:
             parts.append(f"{self.standing_label} by score")
         return "  ·  ".join(parts)
@@ -50,6 +54,7 @@ class ReplayPresentation:
     round_number: int | None = None
     total_rounds: int | None = None
     game_format: str | None = None
+    progress_label: str | None = None
     bottom_color: chess.Color = chess.WHITE
 
     @property
@@ -60,7 +65,9 @@ class ReplayPresentation:
         )
         if self.game_format:
             detail_parts.append(self.game_format)
-        if self.round_number is not None:
+        if self.progress_label:
+            detail_parts.append(self.progress_label)
+        elif self.round_number is not None:
             round_text = f"Round {self.round_number}"
             if self.total_rounds is not None:
                 round_text += f"/{self.total_rounds}"

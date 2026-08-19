@@ -14,8 +14,13 @@ from chess_replay.analysis.stockfish import StockfishEvaluator
 from chess_replay.chess.pgn import parse_pgn_file
 from chess_replay.config import Settings
 from chess_replay.ingestion.chess_com import ChessComClient
-from chess_replay.ingestion.discovery import discover_tournament, resolve_player
+from chess_replay.ingestion.discovery import (
+    discover_daily_games,
+    discover_tournament,
+    resolve_player,
+)
 from chess_replay.ingestion.tournament import TournamentContextLoader
+from chess_replay.jobs.daily_pipeline import DailyCompilationPipeline
 from chess_replay.jobs.pipeline import ReplayPipeline
 from chess_replay.jobs.timeline import TimelineBuilder
 from chess_replay.jobs.tournament_pipeline import TournamentCompilationPipeline
@@ -80,6 +85,25 @@ def build_parser() -> argparse.ArgumentParser:
     tournament.add_argument("--keep-intermediates", action="store_true")
     tournament.add_argument("--no-evaluation", action="store_true")
     tournament.set_defaults(handler=_render_tournament)
+
+    daily = commands.add_parser(
+        "render-day",
+        help="Render one player's games from a UTC date as a compilation",
+    )
+    daily.add_argument("player", help="Chess.com username or supported real name")
+    daily.add_argument("date", type=date.fromisoformat, help="Game date: YYYY-MM-DD")
+    daily.add_argument("--output", type=Path)
+    daily.add_argument(
+        "--narrator",
+        choices=("off", "auto", "windows-sapi", "espeak", "dmitri"),
+        default="off",
+    )
+    daily.add_argument("--voice-pack-dir", type=Path)
+    daily.add_argument("--transition-seconds", type=float, default=4.0)
+    daily.add_argument("--keep-intermediates", action="store_true")
+    daily.add_argument("--include-tournament", action="store_true")
+    daily.add_argument("--no-evaluation", action="store_true")
+    daily.set_defaults(handler=_render_day)
 
     ffmpeg = commands.add_parser("ffmpeg-version", help="Verify the configured FFmpeg")
     ffmpeg.set_defaults(handler=_ffmpeg_version)
@@ -243,6 +267,64 @@ def _render_tournament(arguments: argparse.Namespace) -> int:
             result = compiler.render(
                 profile,
                 discovered,
+                output_path,
+                include_commentary=arguments.narrator != "off",
+                keep_intermediates=arguments.keep_intermediates,
+            )
+    finally:
+        if evaluator is not None:
+            evaluator.close()
+    _print_json(asdict(result) | {
+        "video_path": str(result.video_path),
+        "manifest_path": str(result.manifest_path),
+    })
+    return 0
+
+
+def _render_day(arguments: argparse.Namespace) -> int:
+    settings = Settings()
+    narrator = create_narrator(
+        arguments.narrator,
+        ffmpeg_executable=settings.ffmpeg_path,
+        espeak_executable=settings.espeak_path,
+        voice_pack_directory=arguments.voice_pack_dir or settings.voice_pack_directory,
+    )
+    evaluator = None if arguments.no_evaluation else _create_evaluator(settings)
+    try:
+        replay_pipeline = _replay_pipeline(
+            settings,
+            arguments.narrator,
+            narrator,
+            evaluator,
+        )
+        with ChessComClient(settings.require_pubapi_contact()) as client:
+            profile = resolve_player(client, arguments.player)
+            archive = client.get_player_month(
+                profile.username,
+                arguments.date.year,
+                arguments.date.month,
+            )
+            games = discover_daily_games(
+                archive,
+                arguments.date,
+                non_tournament_only=not arguments.include_tournament,
+            )
+            output_path = arguments.output or settings.output_directory / (
+                f"{profile.username.lower()}-{arguments.date.isoformat()}-daily.mp4"
+            )
+            compiler = DailyCompilationPipeline(
+                client,
+                replay_pipeline,
+                TransitionRenderer(settings.frame_width, settings.frame_height),
+                FFmpegEncoder(settings.ffmpeg_path),
+                avatar_directory=output_path.parent / ".cache" / "avatars",
+                transition_seconds=arguments.transition_seconds,
+                progress=lambda message: print(message, file=sys.stderr),
+            )
+            result = compiler.render(
+                profile,
+                games,
+                arguments.date,
                 output_path,
                 include_commentary=arguments.narrator != "off",
                 keep_intermediates=arguments.keep_intermediates,

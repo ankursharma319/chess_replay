@@ -8,6 +8,7 @@ from chess_replay.ingestion.chess_com import (
 )
 from chess_replay.ingestion.discovery import (
 	DiscoveredTournament,
+	discover_daily_games,
 	discover_tournament,
 	resolve_player,
 )
@@ -29,5 +30,6 @@ __all__ = [
 	"TournamentContextLoader",
 	"TournamentGameContext",
 	"discover_tournament",
+	"discover_daily_games",
 	"resolve_player",
 ]
