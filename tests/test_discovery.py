@@ -24,6 +24,58 @@ def test_resolves_known_real_name_to_profile() -> None:
     assert profile.username == "MagnusCarlsen"
 
 
+def test_resolves_arjun_erigaisi_to_active_gm_account() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/pub/player/ghandeevam2003"
+        return httpx.Response(
+            200,
+            json={
+                "username": "ghandeevam2003",
+                "name": "Arjun Erigaisi",
+                "title": "GM",
+            },
+        )
+
+    with ChessComClient("test/1.0", transport=httpx.MockTransport(handler)) as client:
+        profile = resolve_player(client, "Arjun Erigaisi")
+
+    assert profile.username == "ghandeevam2003"
+
+
+def test_resolves_requested_player_aliases_to_active_gm_accounts() -> None:
+    aliases = {
+        "Nihal Sarin": "nihalsarin",
+        "Hans Niemann": "hansontwitch",
+        "Gukesh D": "gukeshdommaraju",
+        "Pragg": "rpragchess",
+        "Vidit": "viditchess",
+    }
+
+    for display_name, username in aliases.items():
+        def handler(
+            request: httpx.Request,
+            expected=username,
+            expected_name=display_name,
+        ) -> httpx.Response:
+            assert request.url.path == f"/pub/player/{expected}"
+            return httpx.Response(
+                200,
+                json={
+                    "username": expected,
+                    "name": expected_name,
+                    "title": "GM",
+                },
+            )
+
+        with ChessComClient(
+            "test/1.0",
+            transport=httpx.MockTransport(handler),
+        ) as client:
+            profile = resolve_player(client, display_name)
+
+        assert profile.username == username
+
+
 def test_discovers_unique_tournament_by_utc_date_and_name() -> None:
     tournament_url = (
         "https://www.chess.com/tournament/live/"
