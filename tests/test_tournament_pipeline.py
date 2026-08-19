@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 import chess
@@ -96,6 +97,9 @@ def test_compiles_games_and_transitions_into_one_manifest(tmp_path, monkeypatch)
     assert result.game_count == 1
     assert result.total_duration_seconds == 14
     assert result.manifest_path.is_file()
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["games"][0]["termination"] == "Resignation"
+    assert manifest["games"][0]["game_format"] == "Blitz 5+0"
 
 
 def test_places_primary_player_at_bottom_when_playing_black(tmp_path) -> None:
@@ -121,9 +125,11 @@ def test_places_primary_player_at_bottom_when_playing_black(tmp_path) -> None:
         {},
         {},
         "Player",
+        game_format="Blitz 5+0",
     )
 
     assert presentation.bottom_color == chess.BLACK
+    assert presentation.event_line == "Event\nBlitz 5+0  ·  Round 1/1"
 
 
 def _archived_game() -> ArchivedGame:

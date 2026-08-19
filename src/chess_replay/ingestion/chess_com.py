@@ -70,6 +70,14 @@ class ArchivedGame:
     white: Participant
     black: Participant
 
+    @property
+    def game_format_label(self) -> str:
+        return format_game_label(self.time_class, self.time_control)
+
+    @property
+    def termination_label(self) -> str:
+        return game_termination_label(self.white.result, self.black.result)
+
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> ArchivedGame:
         url = str(payload["url"])
@@ -87,6 +95,46 @@ class ArchivedGame:
             white=_participant(payload["white"]),
             black=_participant(payload["black"]),
         )
+
+
+def format_game_label(time_class: str, time_control: str) -> str:
+    class_label = time_class.strip().title() or "Chess"
+    if not time_control or "/" in time_control:
+        return class_label
+    base_text, separator, increment_text = time_control.partition("+")
+    try:
+        base_seconds = int(base_text)
+        increment_seconds = int(increment_text) if separator else 0
+    except ValueError:
+        return class_label
+    if base_seconds % 60 == 0:
+        base_label = str(base_seconds // 60)
+    elif base_seconds < 60:
+        base_label = f"{base_seconds}s"
+    else:
+        minutes, seconds = divmod(base_seconds, 60)
+        base_label = f"{minutes}:{seconds:02d}"
+    return f"{class_label} {base_label}+{increment_seconds}"
+
+
+def game_termination_label(white_result: str, black_result: str) -> str:
+    results = {white_result.casefold(), black_result.casefold()}
+    labels = (
+        ("checkmated", "Checkmate"),
+        ("timeout", "Time Out"),
+        ("resigned", "Resignation"),
+        ("stalemate", "Stalemate"),
+        ("agreed", "Agreement"),
+        ("repetition", "Repetition"),
+        ("insufficient", "Insufficient Material"),
+        ("timevsinsufficient", "Time vs. Insufficient Material"),
+        ("50move", "Fifty-Move Rule"),
+        ("abandoned", "Abandonment"),
+    )
+    for result, label in labels:
+        if result in results:
+            return label
+    return "Game Complete"
 
 
 @dataclass(slots=True)

@@ -317,5 +317,6 @@ def _presentation_manifest(presentation: ReplayPresentation) -> dict[str, object
         "tournament_name": presentation.tournament_name,
         "round_number": presentation.round_number,
         "total_rounds": presentation.total_rounds,
+        "game_format": presentation.game_format,
         "bottom_color": "white" if presentation.bottom_color else "black",
     }

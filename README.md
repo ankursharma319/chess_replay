@@ -266,6 +266,8 @@ STOCKFISH_THREADS=2
 
 The default analysis budget is 200 ms per unique position at depth 18. The score is displayed from White's perspective (`+` favors White, `-` favors Black). The bar follows board orientation, eases to each new score over 0.4 seconds, and keeps the followed player's side at the bottom.
 
+Replay headers place the event on one line and the game class, clock, and round on the next, such as `Blitz 3+1 · Round 4/11`. Result transitions explicitly identify the followed player's outcome, show both players' titles, and include the PubAPI termination reason, including checkmate, resignation, time out, stalemate, agreement, repetition, and insufficient material.
+
 ### YouTube Upload
 
 Create a Google Cloud OAuth desktop client, enable YouTube Data API v3, and download its JSON credentials. Upload privately first:
@@ -291,6 +293,7 @@ The first upload opens a browser for OAuth consent. Later uploads reuse `youtube
 - If PubAPI rejects a request, verify `CHESS_COM_USER_AGENT` and keep requests serial.
 - If evaluation fails, run `Get-Command stockfish` and set `STOCKFISH_PATH` to the executable.
 - If encoding fails, run `ffmpeg -hide_banner -encoders` and verify `libx264` and AAC are present.
+- Encoded move attacks align to the exact visual frame timestamp. Tournament segments are decoded independently before concatenation so AAC priming cannot accumulate at game boundaries.
 - Narration defaults to off. `--narrator auto` selects SAPI on Windows and `espeak-ng` on Linux.
 
 Well-known names such as `Magnus Carlsen` and `Hikaru Nakamura` are supported directly. PubAPI does not provide a general real-name search endpoint, so use the Chess.com username (for example, `@magnuscarlsen`) when a display name cannot be resolved.

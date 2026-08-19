@@ -49,16 +49,21 @@ class ReplayPresentation:
     tournament_name: str | None = None
     round_number: int | None = None
     total_rounds: int | None = None
+    game_format: str | None = None
     bottom_color: chess.Color = chess.WHITE
 
     @property
     def event_line(self) -> str:
-        parts: list[str] = []
-        if self.tournament_name:
-            parts.append(self.tournament_name.replace("-", " "))
+        detail_parts: list[str] = []
+        event_name = (
+            self.tournament_name.replace("-", " ") if self.tournament_name else ""
+        )
+        if self.game_format:
+            detail_parts.append(self.game_format)
         if self.round_number is not None:
             round_text = f"Round {self.round_number}"
             if self.total_rounds is not None:
                 round_text += f"/{self.total_rounds}"
-            parts.append(round_text)
-        return "  ·  ".join(parts)
+            detail_parts.append(round_text)
+        details = "  ·  ".join(detail_parts)
+        return "\n".join(part for part in (event_name, details) if part)

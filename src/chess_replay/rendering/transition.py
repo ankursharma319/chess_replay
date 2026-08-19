@@ -15,7 +15,10 @@ class TransitionPresentation:
     player_name: str
     player_title: str | None
     opponent_name: str
+    opponent_title: str | None
     result_label: str
+    termination_label: str
+    game_format: str
     score_after: float
     wins: int
     draws: int
@@ -24,6 +27,18 @@ class TransitionPresentation:
     total_rounds: int
     tournament_name: str
     next_opponent: str | None = None
+
+    @property
+    def outcome_heading(self) -> str:
+        if self.result_label == "Drew":
+            return "GAME DRAWN"
+        return f"{self.player_name} {self.result_label}".upper()
+
+    @property
+    def matchup_line(self) -> str:
+        player = _titled_name(self.player_name, self.player_title)
+        opponent = _titled_name(self.opponent_name, self.opponent_title)
+        return f"{player} vs {opponent}"
 
 
 class TransitionRenderer:
@@ -56,17 +71,23 @@ class TransitionRenderer:
         )
         draw.text(
             (self.width // 2, 250),
-            presentation.result_label.upper(),
+            presentation.outcome_heading,
             fill=result_color,
-            font=_font(124, bold=True),
+            font=_font(92, bold=True),
             anchor="mm",
         )
-        title = f"{presentation.player_title} " if presentation.player_title else ""
         draw.text(
             (self.width // 2, 390),
-            f"{title}{presentation.player_name} vs {presentation.opponent_name}",
+            presentation.matchup_line,
             fill=self.theme.text,
             font=_font(48, bold=True),
+            anchor="mm",
+        )
+        draw.text(
+            (self.width // 2, 455),
+            f"{presentation.termination_label}  ·  {presentation.game_format}",
+            fill=self.theme.muted_text,
+            font=_font(32, bold=True),
             anchor="mm",
         )
 
@@ -119,3 +140,7 @@ class TransitionRenderer:
 def _plural(value: float, singular: str, plural: str | None = None) -> str:
     noun = singular if value == 1 else (plural or f"{singular}s")
     return f"{value:g} {noun}"
+
+
+def _titled_name(name: str, title: str | None) -> str:
+    return f"{title} {name}" if title else name

@@ -177,7 +177,12 @@ def _render_pgn(arguments: argparse.Namespace) -> int:
     )
     evaluator = _create_evaluator(settings) if arguments.evaluation else None
     try:
-        pipeline = _replay_pipeline(settings, narrator_mode, narrator, evaluator)
+        pipeline = _replay_pipeline(
+            settings,
+            narrator_mode,
+            narrator,
+            evaluator,
+        )
         result = pipeline.render_pgn(
             arguments.pgn,
             output_path,

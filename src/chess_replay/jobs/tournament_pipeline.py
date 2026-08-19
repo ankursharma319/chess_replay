@@ -134,6 +134,7 @@ class TournamentCompilationPipeline:
                 avatars,
                 flags,
                 player.username,
+                game_format=archived.game_format_label,
             )
             round_number = entry.context.round_number
             self.progress(f"Rendering round {round_number}: {entry.game_url}")
@@ -163,7 +164,10 @@ class TournamentCompilationPipeline:
                 player_name=player.name or player.username,
                 player_title=player.title,
                 opponent_name=opponent_profile.name or opponent_profile.username,
+                opponent_title=opponent_profile.title,
                 result_label=entry.result_label,
+                termination_label=archived.termination_label,
+                game_format=archived.game_format_label,
                 score_after=entry.score_after,
                 wins=entry.wins_after,
                 draws=entry.draws_after,
@@ -223,6 +227,8 @@ class TournamentCompilationPipeline:
         avatars: dict[str, Path | None],
         flags: dict[str, Path | None],
         primary_username: str,
+        *,
+        game_format: str | None = None,
     ) -> ReplayPresentation:
         white = self._player_presentation(
             game.headers.get("White", "White"),
@@ -246,6 +252,7 @@ class TournamentCompilationPipeline:
             tournament_name=context.tournament_name,
             round_number=context.round_number,
             total_rounds=context.total_rounds,
+            game_format=game_format,
             bottom_color=(
                 chess.BLACK
                 if black.username.casefold() == primary_username.casefold()
@@ -298,7 +305,10 @@ def _game_manifest(
         "game_url": archived.url,
         "opponent": opponent.name or opponent.username,
         "opponent_username": opponent.username,
+        "opponent_title": opponent.title,
         "result": entry.result_label,
+        "termination": archived.termination_label,
+        "game_format": archived.game_format_label,
         "score_after": entry.score_after,
         "record_after": {
             "wins": entry.wins_after,

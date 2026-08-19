@@ -117,11 +117,12 @@ class PillowBoardRenderer:
             font=title_font,
         )
         if event_label:
-            draw.text(
+            draw.multiline_text(
                 (panel_left + self._scaled(42), board_top + self._scaled(105)),
                 event_label,
                 fill=self.theme.muted_text,
                 font=detail_font,
+                spacing=self._scaled(8),
             )
         top_player = white if bottom_color == chess.BLACK else black
         top_clock = white_clock if bottom_color == chess.BLACK else black_clock
@@ -131,7 +132,7 @@ class PillowBoardRenderer:
             image,
             draw,
             left=panel_left + self._scaled(42),
-            top=board_top + self._scaled(170),
+            top=board_top + self._scaled(200),
             player=top_player,
             clock=top_clock,
             name_font=name_font,

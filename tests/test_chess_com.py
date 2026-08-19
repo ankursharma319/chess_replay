@@ -1,6 +1,10 @@
 import httpx
 
-from chess_replay.ingestion.chess_com import ChessComClient
+from chess_replay.ingestion.chess_com import (
+    ChessComClient,
+    format_game_label,
+    game_termination_label,
+)
 
 
 def test_fetches_archive_and_reuses_cached_response_after_304() -> None:
@@ -75,3 +79,12 @@ def test_fetches_profile_and_downloads_optional_avatar(tmp_path) -> None:
     assert avatar.read_bytes() == b"image"
     assert flag == tmp_path / "flags" / "us.png"
     assert flag.read_bytes() == b"image"
+
+
+def test_formats_game_clock_and_termination_metadata() -> None:
+    assert format_game_label("blitz", "180+1") == "Blitz 3+1"
+    assert format_game_label("rapid", "600") == "Rapid 10+0"
+    assert format_game_label("bullet", "30") == "Bullet 30s+0"
+    assert game_termination_label("win", "resigned") == "Resignation"
+    assert game_termination_label("timeout", "win") == "Time Out"
+    assert game_termination_label("stalemate", "stalemate") == "Stalemate"
